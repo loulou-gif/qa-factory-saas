@@ -5,7 +5,9 @@
       "args": ["${SQUASH_MCP_INDEX}"],
       "env": {
         "SQUASH_TM_BASE_URL": "${SQUASH_TM_BASE_URL}",
-        "SQUASH_TM_API_TOKEN": "${SQUASH_TM_API_TOKEN}"
+        "SQUASH_TM_API_TOKEN": "${SQUASH_TM_API_TOKEN:-}",
+        "SQUASH_TM_USERNAME": "${SQUASH_TM_USERNAME:-}",
+        "SQUASH_TM_PASSWORD": "${SQUASH_TM_PASSWORD:-}"
       }
     },
     "playwright": {

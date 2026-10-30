@@ -27,6 +27,12 @@ Même dépôt, mêmes règles, mêmes skills, mêmes commandes que sous Claude C
    setx SQUASH_TM_API_TOKEN "<ton jeton>"
    ```
    Le jeton n'est jamais écrit dans un fichier du dépôt : `opencode.json` le lit avec `{env:SQUASH_TM_API_TOKEN}`.
+   Si Squash refuse de créer le jeton avec le message « Aucun secret JWT n'est défini pour cette instance », l'administrateur Squash n'a pas activé les jetons d'API. En attendant, utiliser son identifiant et son mot de passe Squash à la place du jeton (le MCP passe alors en authentification Basic) :
+   ```powershell
+   setx SQUASH_TM_USERNAME "<identifiant Squash>"
+   setx SQUASH_TM_PASSWORD "<mot de passe Squash>"
+   ```
+   Ces valeurs restent dans les variables d'environnement du poste, jamais dans le dépôt. Si les deux modes sont définis, le jeton est prioritaire.
 5. **Vérifier le poste** : `python outils/verifier_installation.py` doit finir par « Poste prêt ».
 6. **Lancer OpenCode** dans le dossier `qa-factory` : `opencode`. Vérifier que les serveurs MCP `squash-tm` et `playwright` apparaissent comme connectés, puis taper `/statut`.
 

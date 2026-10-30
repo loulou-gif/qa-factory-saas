@@ -24,6 +24,12 @@ QA Factory fonctionne avec **Claude Code** ou **OpenCode** (même dépôt, même
    setx SQUASH_TM_API_TOKEN "<jeton>"
    ```
    Aucun jeton n'est écrit dans le dépôt.
+   Si Squash refuse de créer le jeton avec le message « Aucun secret JWT n'est défini pour cette instance », l'administrateur Squash n'a pas activé les jetons d'API. En attendant, utiliser son identifiant et son mot de passe Squash à la place du jeton (le MCP passe alors en authentification Basic) :
+   ```powershell
+   setx SQUASH_TM_USERNAME "<identifiant Squash>"
+   setx SQUASH_TM_PASSWORD "<mot de passe Squash>"
+   ```
+   Ces valeurs restent dans les variables d'environnement du poste, jamais dans le dépôt. Si les deux modes sont définis, le jeton est prioritaire.
 5. `python outils/verifier_installation.py` → « Poste prêt ».
 6. Ouvrir l'agent dans ce dossier (`claude` ou `opencode`) et vérifier que `squash-tm` et `playwright` sont connectés.
 

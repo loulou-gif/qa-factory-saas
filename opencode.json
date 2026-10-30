@@ -9,7 +9,9 @@
       ],
       "environment": {
         "SQUASH_TM_BASE_URL": "{env:SQUASH_TM_BASE_URL}",
-        "SQUASH_TM_API_TOKEN": "{env:SQUASH_TM_API_TOKEN}"
+        "SQUASH_TM_API_TOKEN": "{env:SQUASH_TM_API_TOKEN}",
+        "SQUASH_TM_USERNAME": "{env:SQUASH_TM_USERNAME}",
+        "SQUASH_TM_PASSWORD": "{env:SQUASH_TM_PASSWORD}"
       },
       "enabled": true,
       "timeout": 60000

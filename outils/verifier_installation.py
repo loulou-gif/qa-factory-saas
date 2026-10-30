@@ -56,7 +56,13 @@ def main():
         ligne(OK, "SQUASH_MCP_INDEX", index)
     url = os.environ.get("SQUASH_TM_BASE_URL", "")
     ligne(OK if url.endswith("/api/rest/latest") else KO, "SQUASH_TM_BASE_URL", url or "absente (doit finir par /api/rest/latest)")
-    ligne(OK if os.environ.get("SQUASH_TM_API_TOKEN") else KO, "SQUASH_TM_API_TOKEN", "définie" if os.environ.get("SQUASH_TM_API_TOKEN") else "absente (Squash → Mon compte → Jetons d'API)")
+    if os.environ.get("SQUASH_TM_API_TOKEN"):
+        ligne(OK, "Authentification Squash", "jeton d'API (SQUASH_TM_API_TOKEN)")
+    elif os.environ.get("SQUASH_TM_USERNAME") and os.environ.get("SQUASH_TM_PASSWORD"):
+        ligne(OK, "Authentification Squash", f"identifiant et mot de passe ({os.environ['SQUASH_TM_USERNAME']})")
+    else:
+        ligne(KO, "Authentification Squash", "définir SQUASH_TM_API_TOKEN, ou SQUASH_TM_USERNAME et SQUASH_TM_PASSWORD "
+              "si l'instance n'autorise pas les jetons (« Aucun secret JWT n'est défini »)")
 
     print("\nDépôt")
     for f in ("AGENTS.md", "CLAUDE.md", ".mcp.json", "opencode.json", ".claude/settings.json"):

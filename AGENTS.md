@@ -113,6 +113,6 @@ Les scripts ne font aucun appel réseau. Squash passe uniquement par le MCP `squ
 | Serveurs MCP | `.mcp.json` | `opencode.json` → `mcp` |
 | Permissions | `.claude/settings.json` | `opencode.json` → `permission` et `tools` |
 
-Les deux configurations lisent les mêmes variables d'environnement : `SQUASH_MCP_INDEX` (chemin de `squash-tm-mcp/dist/index.js`), `SQUASH_TM_BASE_URL`, `SQUASH_TM_API_TOKEN`. Une commande modifiée dans `.claude/commands/` doit être répercutée avec `python outils/synchroniser_opencode.py`.
+Les deux configurations lisent les mêmes variables d'environnement : `SQUASH_MCP_INDEX` (chemin de `squash-tm-mcp/dist/index.js`), `SQUASH_TM_BASE_URL`, `SQUASH_TM_API_TOKEN` (ou, si l'instance n'autorise pas les jetons d'API, `SQUASH_TM_USERNAME` et `SQUASH_TM_PASSWORD`). Une commande modifiée dans `.claude/commands/` doit être répercutée avec `python outils/synchroniser_opencode.py`.
 
 Quand une commande ou une consigne cite une skill (« suivre la skill `analyse-cdc` »), la charger avant d'agir : outil Skill dans Claude Code, outil `skill` dans OpenCode. Les noms d'outils MCP cités sans préfixe (`publish_validated_test_cases`) correspondent à `mcp__squash-tm__…` dans Claude Code et à `squash-tm_…` dans OpenCode.
