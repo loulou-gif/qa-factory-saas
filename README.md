@@ -14,7 +14,7 @@ Les cas de tests sont conçus **uniquement avec les techniques reconnues par l'I
 
 QA Factory fonctionne avec **Claude Code** ou **OpenCode** (même dépôt, mêmes règles, mêmes skills, mêmes commandes). Guide détaillé pour OpenCode : `docs/OPENCODE.md`.
 
-1. Programmes : Claude Code ou OpenCode, Node.js 20+, Python 3 avec `openpyxl` (`pip install openpyxl`), Pandoc.
+1. Programmes : Claude Code ou OpenCode, Node.js 20+, Python 3 avec `openpyxl` et `python-docx` (`pip install openpyxl python-docx`), Pandoc.
 2. Le MCP Squash : cloner `squash-tm-mcp`, puis `npm install` et `npm run build`.
 3. Un jeton d'API Squash personnel (Squash → Mon compte → Jetons d'API).
 4. Trois variables d'environnement, lues à la fois par `.mcp.json` (Claude Code) et `opencode.json` (OpenCode) :
@@ -40,8 +40,8 @@ QA Factory fonctionne avec **Claude Code** ou **OpenCode** (même dépôt, même
 | 1. Créer le projet | Responsable | `/nouveau-projet saucedemo https://www.saucedemo.com 28` | `projets/saucedemo/` et `projet.json` |
 | 2. Déposer les documents | Responsable | (explorateur de fichiers) | CDC, US, DSF dans `01-entrant/` |
 | 3. Analyser | Agent | `/analyser saucedemo` | `02-a-valider/` : cas (techniques ISTQB), stratégie de types de tests, questions, jeux de données |
-| 4. Relire, corriger | Responsable + agent | `/corriger saucedemo <demande>` | nouvelle version dans `02-a-valider/` |
-| 5. **Valider** | **Responsable** | **déplacer les 4 fichiers dans `03-valide/`** | validation |
+| 4. Relire, corriger | Responsable + agent | modifier l'Excel ou le Word, puis `/corriger saucedemo` ; ou `/corriger saucedemo <demande>` | nouvelle version dans `02-a-valider/`, tous les fichiers à jour |
+| 5. **Valider** | **Responsable** | **déplacer **tout le contenu** de `02-a-valider/` dans `03-valide/`** | validation |
 | 6. Publier dans Squash | Agent, accord du responsable du projet | `/publier saucedemo` | exigences + cas liés dans Squash |
 | 7. Specs d'automatisation | Agent | `/specs saucedemo` | specs BROUILLON dans `04-livrables/specs/` |
 | 8. Explorer la plateforme | Agent | `/explorer saucedemo` | découvertes, écarts, specs CONFIRMÉES |
@@ -51,7 +51,7 @@ QA Factory fonctionne avec **Claude Code** ou **OpenCode** (même dépôt, même
 
 Les étapes 1 à 7 forment le **temps A** (réception du cahier des charges, sans besoin de l'application). Les étapes 8 et 9 forment le **temps B** : elles ne démarrent qu'avec le lien de la plateforme, l'environnement et les comptes de test. **Le cahier de tests et le manuel ne sont produits qu'en temps B**, en parallèle de l'écriture des scripts automatisés. Les détails : `CLAUDE.md`.
 
-Les 4 fichiers à déplacer à l'étape 5 : `cas-de-tests.json`, `cas-de-tests.md`, `ambiguites.md`, `jeux-de-donnees.md`.
+Les cas de tests existent en quatre formats : `cas-de-tests.json` (la source), `cas-de-tests.md` (relecture), et **`cas-de-tests.xlsx` / `cas-de-tests.docx`, modifiables directement** par un testeur qui préfère Excel ou Word. Après une modification, `/corriger <projet>` repère le fichier modifié, reporte les changements dans le JSON et met à jour les autres. Détails : `docs/GUIDE-UTILISATION.md`.
 
 ## Ce que contient le dépôt
 
@@ -88,7 +88,8 @@ Utilisables sans agent :
 
 ```powershell
 python outils/nouveau_projet.py <nom> --url <URL> --squash-id <ID> --libelle "<Nom>"
-python outils/rendre_revue.py <projet>                  # vue de relecture depuis le JSON
+python outils/rendre_revue.py <projet>                  # vues md, Excel et Word depuis le JSON
+python outils/synchroniser_vues.py <projet>             # importe l'Excel ou le Word modifié, régénère le reste
 python outils/controle.py <projet> [--dossier 03-valide] # contrôle + matrice de traçabilité
 python outils/build_cahier.py <projet> [--nominaux]      # cahier Excel, temps B (exige l'URL et l'exploration)
 python outils/generer_specs.py <projet>                  # specs BROUILLON (depuis 03-valide)

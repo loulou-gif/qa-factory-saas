@@ -3,8 +3,8 @@
 Ce guide explique, document par document, **à quoi il sert, qui l'écrit, quand, et ce que le testeur en fait**. Il vaut pour Claude Code comme pour OpenCode. Pour l'installation, voir `README.md` (et `docs/OPENCODE.md` pour OpenCode).
 
 Trois règles à garder en tête :
-1. **Un seul fichier fait foi** : `03-valide/cas-de-tests.json`. Squash, le cahier Excel, les specs et la matrice en sont générés. On ne corrige jamais un livrable généré à la main : on corrige le JSON (avec `/corriger`), puis on régénère.
-2. **Valider, c'est déplacer.** Le responsable du projet valide l'analyse en déplaçant les 4 fichiers de `02-a-valider/` vers `03-valide/`. L'agent ne le fait jamais.
+1. **Un seul fichier fait foi** : `cas-de-tests.json`. Squash, le cahier Excel, les specs et la matrice en sont générés. Pour relire et corriger confortablement, les cas existent aussi en **Excel et en Word modifiables** : on modifie l'un des deux, puis `/corriger` reporte les modifications dans le JSON et met à jour tout le reste (section 3).
+2. **Valider, c'est déplacer.** Le responsable du projet valide l'analyse en déplaçant tout le contenu de `02-a-valider/` vers `03-valide/`. L'agent ne le fait jamais.
 3. **Deux temps.** Temps A : le cahier des charges suffit. Temps B : il faut le lien de la plateforme, l'environnement et les comptes de test. Le cahier de tests et le manuel ne sont produits qu'en temps B.
 
 ## 1. Vue d'ensemble d'un projet
@@ -16,7 +16,9 @@ projets/<projet>/
 ├── 01-entrant/              documents du client (déposés par le responsable)
 ├── 02-a-valider/            analyse proposée par l'agent (relue par le responsable)
 │   ├── cas-de-tests.json        source : exigences, cas, stratégie de types de tests
-│   ├── cas-de-tests.md          vue de relecture (générée)
+│   ├── cas-de-tests.md          vue de relecture (générée, lecture seule)
+│   ├── cas-de-tests.xlsx        cas de tests en Excel (généré, MODIFIABLE)
+│   ├── cas-de-tests.docx        cas de tests en Word (généré, MODIFIABLE)
 │   ├── ambiguites.md            questions au client
 │   ├── jeux-de-donnees.md       données de test nécessaires
 │   └── matrice-tracabilite.md   exigences → cas (générée)
@@ -35,9 +37,9 @@ projets/<projet>/
 |---|---|---|---|
 | 1 | `/nouveau-projet <nom> <url> <id Squash>` | Complète `projet.json` (client, responsable, environnement, auteur du cahier) | `projet.json`, dossiers |
 | 2 | — | Dépose CDC, US, DSF, maquettes dans `01-entrant/` | — |
-| 3 | `/analyser <projet>` | Attend le compte rendu | les 5 fichiers de `02-a-valider/` |
-| 4 | `/corriger <projet> <demande>` | Relit (section 3), demande des corrections, fait répondre le client aux questions | nouvelle version dans `02-a-valider/` |
-| 5 | — | **Valide** : déplace `cas-de-tests.json`, `cas-de-tests.md`, `ambiguites.md`, `jeux-de-donnees.md` dans `03-valide/` | — |
+| 3 | `/analyser <projet>` | Attend le compte rendu | les fichiers de `02-a-valider/` (dont l'Excel et le Word des cas) |
+| 4 | `/corriger <projet>` ou `/corriger <projet> <demande>` | Relit (section 3), corrige dans l'Excel ou le Word, ou écrit sa demande ; fait répondre le client aux questions | nouvelle version ; JSON, Markdown, Excel et Word à jour |
+| 5 | — | **Valide** : déplace tout le contenu de `02-a-valider/` dans `03-valide/` | — |
 | 6 | `/publier <projet>` | Lit la simulation, donne son accord explicite | exigences et cas dans Squash, `correspondance.json` |
 | 7 | `/specs <projet>` | Rien (les specs restent BROUILLON) | `04-livrables/specs/` |
 | 8 | `/explorer <projet>` | Fournit les comptes (variables d'environnement), arbitre les écarts | `04-livrables/exploration/`, specs CONFIRMÉES |
@@ -46,9 +48,48 @@ projets/<projet>/
 
 ## 3. Les documents de l'analyse (`02-a-valider/` puis `03-valide/`)
 
+### Les cas de tests en quatre formats
+
+| Fichier | Pour quoi faire | Modifiable ? |
+|---|---|---|
+| `cas-de-tests.xlsx` | Relire et corriger dans Excel : filtres, tri, listes déroulantes | **Oui** |
+| `cas-de-tests.docx` | Relire et corriger dans Word : une fiche par cas, facile à imprimer ou commenter | **Oui** |
+| `cas-de-tests.md` | Relire dans un éditeur de texte ou sur GitHub | Non (régénéré) |
+| `cas-de-tests.json` | La source, lue par Squash et les outils | Réservé aux spécialistes |
+
+Les quatre contiennent la même chose : la stratégie de types de tests, les exigences et les cas avec leurs étapes.
+
+### Corriger dans l'Excel ou le Word
+
+1. Ouvrir **l'un des deux** (`cas-de-tests.xlsx` ou `cas-de-tests.docx`) dans `02-a-valider/`.
+2. Modifier, enregistrer, **fermer** le fichier.
+3. Dans l'agent : `/corriger <projet>`. Il repère seul le fichier modifié, reporte les changements dans le JSON (la version augmente de 1), régénère les trois autres et lance le contrôle. Il résume ce qu'il a importé : cas ajoutés, modifiés, supprimés.
+
+Dans l'Excel (la feuille « Lisez-moi » rappelle ces règles) :
+- feuille « Cas de tests » : une ligne par étape ; les informations du cas (titre, exigences, nature, technique…) sont sur la **première ligne** du cas ;
+- ajouter une étape : insérer une ligne sous le cas et remplir seulement Action et Résultat attendu ;
+- ajouter un cas : une nouvelle ligne avec au moins un titre, **ID laissé vide** (l'agent donne le numéro suivant) ;
+- supprimer un cas : supprimer toutes ses lignes ;
+- Nature, Type de test, Technique ISTQB, Importance : listes déroulantes ;
+- feuilles « Exigences » et « Stratégie » : une ligne par élément.
+
+Dans le Word :
+- chaque cas = un titre « CT0001 — Titre », une fiche (tableau Champ / Valeur) et un tableau d'étapes ;
+- ajouter un cas : copier un bloc complet et remplacer le numéro par `CTxxxx` ;
+- ajouter une étape : ajouter une ligne au tableau des étapes ;
+- ne pas renommer les titres de colonnes ni la première colonne des fiches ;
+- accepter les modifications suivies avant `/corriger`.
+
+Ce qu'il faut éviter :
+- **modifier l'Excel et le Word en même temps.** L'agent le détecte, n'écrit rien et vous demande lequel garder : les modifications de l'autre seraient perdues ;
+- modifier l'Excel ou le Word dans `03-valide/` : ce qui est validé ne se modifie plus (le contrôle le signale). Remettre d'abord les fichiers dans `02-a-valider/` ;
+- laisser le fichier ouvert pendant `/corriger` : l'agent ne peut pas le régénérer.
+
+On peut aussi combiner : modifier l'Excel puis écrire `/corriger <projet> ajoute un cas limite sur le code postal`. L'agent importe d'abord l'Excel, puis applique la demande.
+
 ### `cas-de-tests.md` — la vue de relecture
 
-C'est **le document à lire** pour relire l'analyse. Il est généré depuis le JSON ; ne pas le modifier (le contrôle le détecte grâce à l'empreinte en première ligne).
+Version texte des mêmes contenus. Elle est générée depuis le JSON ; ne pas la modifier (le contrôle le détecte grâce à l'empreinte en première ligne).
 
 Ordre de lecture conseillé :
 1. **Synthèse** : nombre d'exigences et de cas, répartition par nature (nominal, négatif, limite), par type de test et par technique ISTQB. Un projet avec 0 cas négatif ou une seule technique mérite une question à l'agent.
@@ -61,11 +102,11 @@ Ce qu'il faut vérifier :
 - chaque résultat attendu est observable (un message, une page, une valeur), jamais « fonctionne correctement » ;
 - les cas marqués « suspendu à une question bloquante » ne seront justes qu'après la réponse du client.
 
-Pour corriger : `/corriger <projet> ajouter un cas limite sur la longueur du code postal` ou `/corriger <projet> CT0012 : le tri par défaut est par prix`.
+Pour corriger : directement dans l'Excel ou le Word (voir plus haut), ou par une demande écrite : `/corriger <projet> ajouter un cas limite sur la longueur du code postal`, `/corriger <projet> CT0012 : le tri par défaut est par prix`.
 
 ### `cas-de-tests.json` — la source
 
-Lu par les outils et par Squash, rarement ouvert par le testeur. Format : `docs/FORMAT-CAS-DE-TESTS.md`. Les techniques et types de test autorisés : `docs/TECHNIQUES-ISTQB.md`. Une modification manuelle est possible pour un spécialiste, à condition de relancer ensuite `python outils/rendre_revue.py <projet>` et `python outils/controle.py <projet>`.
+Lu par les outils et par Squash, rarement ouvert par le testeur. Format : `docs/FORMAT-CAS-DE-TESTS.md`. Les techniques et types de test autorisés : `docs/TECHNIQUES-ISTQB.md`. Un spécialiste peut le modifier directement, puis lancer `/corriger <projet>` (ou `python outils/synchroniser_vues.py <projet>`) pour mettre à jour l'Excel, le Word et le Markdown.
 
 ### `ambiguites.md` — les questions au client
 
@@ -162,7 +203,8 @@ Utilisables sans agent, depuis le dossier `qa-factory` :
 | Commande | Quand |
 |---|---|
 | `python outils/controle.py <projet> [--dossier 03-valide]` | Après toute modification : 0 erreur exigé, avertissements à lire |
-| `python outils/rendre_revue.py <projet>` | Après une modification manuelle du JSON |
+| `python outils/synchroniser_vues.py <projet>` | Après une modification de l'Excel, du Word ou du JSON (c'est ce que fait `/corriger`) |
+| `python outils/rendre_revue.py <projet>` | Régénérer les vues depuis le JSON (refuse si l'Excel ou le Word contient des modifications non importées) |
 | `python outils/statut.py [projet]` | Pour savoir où en est un projet |
 | `python outils/build_cahier.py <projet> [--nominaux]` | Régénérer le cahier (temps B) |
 | `python outils/generer_specs.py <projet>` | Régénérer les specs BROUILLON |
@@ -174,7 +216,7 @@ Utilisables sans agent, depuis le dossier `qa-factory` :
 
 **Pourquoi le test de performance est « à confirmer » et non « retenu » ?** Parce que le CDC ne donne pas de seuil mesurable. L'agent ne retient jamais un type de test sur un seuil inventé : il ouvre une question. Dès que le client répond, `/corriger` passe le type à « retenu » et décrit la campagne.
 
-**Puis-je modifier un cas directement dans Squash ou dans l'Excel ?** Non : la modification serait perdue à la prochaine génération et casserait la traçabilité. Corriger dans le JSON (via `02-a-valider`), revalider, régénérer. Pour un cas déjà publié, l'agent liste les cas à mettre à jour à la main dans Squash.
+**Puis-je modifier un cas directement dans Squash ou dans le cahier de tests Excel (`04-livrables/cahier`) ?** Non : la modification serait perdue à la prochaine génération et casserait la traçabilité. Seuls `cas-de-tests.xlsx` et `cas-de-tests.docx` de `02-a-valider` sont faits pour être modifiés. Corriger dans le JSON (via `02-a-valider`), revalider, régénérer. Pour un cas déjà publié, l'agent liste les cas à mettre à jour à la main dans Squash.
 
 **Le contrôle affiche des avertissements.** Ils ne bloquent pas, mais chacun doit être lu : soit on corrige, soit on le garde volontairement (par exemple un cas suspendu à une question bloquante en attente du client).
 

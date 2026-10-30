@@ -1,11 +1,14 @@
 # Format des fichiers d'analyse
 
-L'analyse d'un cahier des charges produit trois fichiers, plus une vue de relecture générée :
+L'analyse d'un cahier des charges produit trois fichiers, plus trois vues générées des cas de tests :
 
 | Fichier | Rôle | Qui l'écrit |
 |---|---|---|
 | `cas-de-tests.json` | **Source unique** : exigences et cas de tests | L'agent (`/analyser`, `/corriger`) |
 | `cas-de-tests.md` | Vue de relecture lisible du JSON | Généré par `outils/rendre_revue.py`, ne pas modifier |
+| `cas-de-tests.xlsx` | Version Excel **modifiable** (exigences, cas et étapes, stratégie) | Générée ; modifiable par le responsable du projet, puis `/corriger` |
+| `cas-de-tests.docx` | Version Word **modifiable** (mêmes contenus) | Générée ; modifiable par le responsable du projet, puis `/corriger` |
+| `.synchro.json` | État à la dernière génération (sert à repérer le fichier modifié) | Généré, ne pas modifier ni supprimer |
 | `ambiguites.md` | Ambiguïtés, contradictions, manques, questions | L'agent, puis réponses du responsable du projet ou du client |
 | `jeux-de-donnees.md` | Jeux de données nécessaires aux cas | L'agent |
 
@@ -155,7 +158,8 @@ Bloquant (erreur) :
 - stratégie absente ou incomplète (type ISTQB non examiné, justification manquante, type à confirmer sans question) ;
 - cas sans étape, étape sans action ou sans résultat attendu ;
 - cas qui cite une exigence, un jeu de données ou une question absents ;
-- `cas-de-tests.md` désynchronisé du JSON (modifié à la main ou non régénéré).
+- `cas-de-tests.md` désynchronisé du JSON (modifié à la main ou non régénéré) ;
+- `cas-de-tests.xlsx` ou `cas-de-tests.docx` différent du JSON : modifications non importées (dans `02-a-valider`, lancer `/corriger`) ou modification après validation (dans `03-valide`).
 
 Avertissement :
 - exigence couverte par aucun cas ; exigence sans cas négatif alors qu'elle porte une règle de validation ;

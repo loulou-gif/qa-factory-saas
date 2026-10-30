@@ -86,7 +86,7 @@ Un `JDD-xxx` par ensemble cohérent de données (compte standard, compte verroui
 
 1. Écris `02-a-valider/cas-de-tests.json` (avec `meta.version: 1`, `projet.id` = `projet.json` → `squash.projet_id`, `ranger_par_fonctionnalite` = `projet.json` → `squash.ranger_par_fonctionnalite`).
 2. Écris `02-a-valider/ambiguites.md` et `02-a-valider/jeux-de-donnees.md` (en-tête : titre + une phrase d'usage).
-3. `python outils/rendre_revue.py <projet>` → `cas-de-tests.md`.
+3. `python outils/rendre_revue.py <projet>` → `cas-de-tests.md` (relecture), `cas-de-tests.xlsx` et `cas-de-tests.docx` (versions modifiables par le responsable du projet).
 4. `python outils/controle.py <projet>` → corrige jusqu'à **0 erreur**. Relis chaque avertissement : corrige-le ou garde-le volontairement.
 5. Ajoute une ligne au journal (le contrôle ne le fait pas) : `| date | analyser | N exigences, N cas, N questions (N bloquantes) | fichiers |`.
 
@@ -97,13 +97,23 @@ Court, dans cet ordre :
 - les types de tests à effectuer : retenus, à confirmer (avec la question), non retenus ;
 - les **questions bloquantes** en clair, une ligne chacune ;
 - les choix d'interprétation que tu as faits (s'il y en a) ;
-- la suite : relire `cas-de-tests.md`, corriger avec `/corriger`, valider en déplaçant les 4 fichiers dans `03-valide`.
+- la suite : relire `cas-de-tests.md` (ou l'Excel, ou le Word) ; corriger soit en modifiant directement `cas-de-tests.xlsx` **ou** `cas-de-tests.docx` puis `/corriger <projet>`, soit avec `/corriger <projet> <demande>` ; valider en déplaçant tout le contenu de `02-a-valider` dans `03-valide`.
 
 Ne déplace jamais les fichiers dans `03-valide` toi-même.
 
 ## Corrections (`/corriger`)
 
-- Modifie le JSON (et si besoin `ambiguites.md` / `jeux-de-donnees.md`), incrémente `meta.version`, régénère la vue, relance le contrôle.
+Le responsable du projet peut corriger de deux façons, éventuellement combinées : en modifiant lui-même `cas-de-tests.xlsx` ou `cas-de-tests.docx`, ou en écrivant sa demande après `/corriger <projet>`.
+
+**Toujours commencer par importer ses modifications manuelles**, sinon elles seraient écrasées :
+1. `python outils/synchroniser_vues.py <projet>`. Le script repère le fichier modifié depuis la dernière génération (JSON, Excel ou Word), reporte ses modifications dans le JSON (version + 1), régénère les autres fichiers et lance le contrôle.
+2. Résume au responsable du projet ce qui a été importé (cas ajoutés, modifiés, supprimés). Un cas ajouté sans identifiant reçoit le numéro suivant.
+3. **Conflit** (code de sortie 2 : l'Excel et le Word ont tous deux été modifiés, différemment) : ne choisis pas toi-même. Montre les deux listes de modifications et demande quel fichier fait foi, puis relance avec `--source xlsx` ou `--source docx`. Si le responsable veut garder les deux, propose de reporter toi-même les modifications du second fichier dans le JSON après l'import du premier.
+4. Fichier illisible (en-têtes renommés, modifications suivies non acceptées, fichier ouvert) : explique le message et ce qu'il faut faire ; ne force rien.
+5. Après une suppression, mets à jour les références dans `jeux-de-donnees.md` (« Cas concernés ») et `ambiguites.md` (« Impact ») : le contrôle les signale.
+
+Ensuite, s'il y a une demande écrite :
+- Modifie le JSON (et si besoin `ambiguites.md` / `jeux-de-donnees.md`), incrémente `meta.version`, puis `python outils/synchroniser_vues.py <projet>` (le JSON étant le seul fichier modifié, il régénère le Markdown, l'Excel et le Word) et vérifie le contrôle. Ne lance jamais `rendre_revue.py --forcer` sans l'accord du responsable : cela effacerait ses modifications non importées.
 - Ne renumérote jamais les cas existants : un nouveau cas prend le prochain numéro libre, un cas supprimé laisse un trou.
 - Si une question reçoit une réponse : remplis `Réponse`, passe `Statut` à `répondue`, mets à jour les cas liés, retire la question de leurs `questions` seulement si la réponse lève entièrement le doute.
 - Si les fichiers sont déjà dans `03-valide`, refuse de les modifier là : propose de les remettre dans `02-a-valider` (c'est le responsable du projet qui déplace) car ils ont peut-être déjà été publiés dans Squash.

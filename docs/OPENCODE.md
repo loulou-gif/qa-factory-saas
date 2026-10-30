@@ -15,7 +15,7 @@ Même dépôt, mêmes règles, mêmes skills, mêmes commandes que sous Claude C
 
 ## 2. Installation d'un poste (une fois, environ 20 minutes)
 
-1. **Programmes** : OpenCode, Node.js 20 ou plus, Python 3 avec `pip install openpyxl`, Pandoc. Un modèle d'IA configuré dans OpenCode (fournisseur et clé, selon la politique de l'équipe).
+1. **Programmes** : OpenCode, Node.js 20 ou plus, Python 3 avec `pip install openpyxl python-docx`, Pandoc. Un modèle d'IA configuré dans OpenCode (fournisseur et clé, selon la politique de l'équipe).
 2. **Récupérer les deux dépôts** :
    - `qa-factory` (ce dépôt) ;
    - `squash-tm-mcp` (le MCP Squash amélioré), puis dans son dossier : `npm install` et `npm run build`.
@@ -44,7 +44,7 @@ Identique à Claude Code (voir `README.md`) :
 
 | Temps | Commandes |
 |---|---|
-| A — cahier des charges reçu | `/nouveau-projet`, `/analyser`, `/corriger`, validation (déplacer les 4 fichiers dans `03-valide`), `/publier`, `/specs` |
+| A — cahier des charges reçu | `/nouveau-projet`, `/analyser`, `/corriger`, validation (déplacer tout le contenu de `02-a-valider` dans `03-valide`), `/publier`, `/specs` |
 | B — plateforme accessible | `/explorer`, puis `/recette` (scripts, cahier et manuel en parallèle) ou `/generer-tests`, `/cahier`, `/manuel` séparément |
 | Suivi | `/statut` |
 

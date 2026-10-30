@@ -1,7 +1,7 @@
 <!-- Fichier généré par outils/rendre_revue.py à partir de cas-de-tests.json — NE PAS MODIFIER. empreinte: b3dafa43ba689363 -->
 # Cas de tests — SauceDemo (version 2)
 
-Vue de relecture. Pour corriger : `/corriger saucedemo <demande>` (le JSON est modifié, puis cette vue est régénérée).
+Vue de relecture, en lecture seule. Pour modifier : `cas-de-tests.xlsx` ou `cas-de-tests.docx` (l'un ou l'autre), puis `/corriger saucedemo` ; ou directement `/corriger saucedemo <demande>`.
 
 Sources analysées : 01-entrant/cahier-des-charges.md
 

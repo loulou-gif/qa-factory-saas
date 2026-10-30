@@ -207,6 +207,35 @@ def controler_strategie(data, ids_ex, ids_ct, questions, E, A):
             A.append(f"{ct} : cas de type « {tt} » non rattaché à la stratégie")
 
 
+def controler_vues(base, data, projet, dossier, E, A):
+    """L'Excel et le Word doivent refléter le JSON : sinon des modifications n'ont pas été importées."""
+    try:
+        import vues_cas
+        proj = vues_cas.projection(data)
+        lecteurs = (("cas-de-tests.xlsx", vues_cas.lire_xlsx), ("cas-de-tests.docx", vues_cas.lire_docx))
+        for nom, lire in lecteurs:
+            f = base / nom
+            if not f.exists():
+                A.append(f"{nom} absent : python outils/rendre_revue.py {projet}" +
+                         (" --dossier 03-valide" if dossier == "03-valide" else ""))
+                continue
+            try:
+                ecart = lire(f) != proj
+            except ImportError:
+                raise
+            except Exception as e:
+                E.append(f"{nom} illisible : {e}")
+                continue
+            if ecart and dossier == "03-valide":
+                E.append(f"{nom} a été modifié après validation : le responsable du projet remet les fichiers dans "
+                         f"02-a-valider, puis /corriger {projet}")
+            elif ecart:
+                E.append(f"{nom} contient des modifications non reportées dans le JSON : /corriger {projet} "
+                         f"(ou python outils/synchroniser_vues.py {projet})")
+    except ImportError:
+        A.append("python-docx ou openpyxl absent : vues Excel/Word non contrôlées (pip install openpyxl python-docx)")
+
+
 def ecrire_matrice(base, data, couverture, questions):
     lignes = ["# Matrice de traçabilité exigences → cas de tests", "",
               "Générée par `outils/controle.py`. Ne pas modifier.", "",
@@ -243,6 +272,8 @@ def main():
 
     res = controler(data, questions, jeux, base / "cas-de-tests.md", empreinte(fjson))
     E, A = res[0], res[1]
+    if isinstance(data, dict):
+        controler_vues(base, data, a.projet, a.dossier, E, A)
     couverture = res[2] if len(res) > 2 else {}
     if couverture:
         ecrire_matrice(base, data, couverture, questions)

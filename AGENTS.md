@@ -10,12 +10,12 @@ Tu es l'agent QA de ce dépôt. Tu travailles pour une équipe de testeurs (pas 
 
 Le fichier `projets/<projet>/03-valide/cas-de-tests.json` (format : `docs/FORMAT-CAS-DE-TESTS.md`) est la **seule** source des exigences et des cas de tests validés. Tout le reste en est **généré**, avec les mêmes identifiants :
 
-- la vue de relecture `cas-de-tests.md` (`outils/rendre_revue.py`) ;
+- la vue de relecture `cas-de-tests.md` et les versions modifiables `cas-de-tests.xlsx` et `cas-de-tests.docx` (`outils/rendre_revue.py`). Un testeur peut modifier l'Excel **ou** le Word : `/corriger` importe ses modifications dans le JSON (`outils/synchroniser_vues.py`) et régénère les autres fichiers ;
 - la publication Squash (MCP `squash-tm`, outil `publish_validated_test_cases`) ;
 - le cahier de tests Excel (`outils/build_cahier.py`) ;
 - les specs d'automatisation (`outils/generer_specs.py`, puis complétées après exploration).
 
-Ne jamais réécrire un cas de test à la main dans un livrable dérivé. Une correction se fait dans le JSON, puis on régénère.
+Ne jamais réécrire un cas de test à la main dans un livrable dérivé (Squash, cahier, specs). Une correction se fait dans le JSON, directement ou via l'Excel / le Word des cas importés par `/corriger`, puis on régénère.
 
 Identifiants stables : exigences `EX-001`, cas `CT0001`, questions `Q-001`, jeux de données `JDD-001`. Un identifiant publié n'est jamais réutilisé pour autre chose ; un cas supprimé laisse un trou dans la numérotation.
 
@@ -76,8 +76,8 @@ Pourquoi deux temps : avant que l'application existe, les libellés, enchaîneme
 | Commande | Rôle |
 |---|---|
 | `/nouveau-projet <nom>` | Crée `projets/<nom>/` et son `projet.json` |
-| `/analyser <projet>` | Temps A : analyse de `01-entrant/`, écrit les 3 fichiers dans `02-a-valider/` |
-| `/corriger <projet> <demande>` | Applique une correction demandée par le responsable du projet aux fichiers de `02-a-valider/` |
+| `/analyser <projet>` | Temps A : analyse de `01-entrant/`, écrit dans `02-a-valider/` les cas (JSON, Markdown, Excel, Word), les questions et les jeux de données |
+| `/corriger <projet> [demande]` | Importe les modifications faites dans l'Excel ou le Word, applique la demande éventuelle, régénère tous les fichiers de `02-a-valider/` |
 | `/publier <projet>` | Temps A : publication Squash de `03-valide/` (simulation puis publication) |
 | `/specs <projet>` | Temps A : specs d'automatisation BROUILLON dans `04-livrables/specs/` |
 | `/explorer <projet> [fonctionnalité]` | Temps B : exploration de l'application, écarts, specs CONFIRMÉES |
@@ -87,11 +87,12 @@ Pourquoi deux temps : avant que l'application existe, les libellés, enchaîneme
 | `/manuel <projet>` | Temps B : manuel utilisateur |
 | `/statut [projet]` | Où en est chaque projet |
 
-## Outils (Python 3, bibliothèque `openpyxl`)
+## Outils (Python 3, bibliothèques `openpyxl` et `python-docx`)
 
 ```
 python outils/nouveau_projet.py <nom> [--url URL] [--squash-id ID]
-python outils/rendre_revue.py <projet> [--dossier 02-a-valider|03-valide]
+python outils/rendre_revue.py <projet> [--dossier 02-a-valider|03-valide]   # md + xlsx + docx (refuse d'écraser des modifs non importées)
+python outils/synchroniser_vues.py <projet> [--source json|xlsx|docx]     # importe l'Excel ou le Word modifié, régénère le reste
 python outils/controle.py <projet> [--dossier 02-a-valider|03-valide]
 python outils/build_cahier.py <projet> [--nominaux]     # temps B uniquement : exige l'URL et l'exploration
 python outils/generer_specs.py <projet>

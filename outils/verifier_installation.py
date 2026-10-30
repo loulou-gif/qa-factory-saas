@@ -44,7 +44,9 @@ def main():
         ligne(KO, "Agent", "installer Claude Code ou OpenCode")
 
     print("\nPython")
-    ligne(OK if importlib.util.find_spec("openpyxl") else KO, "openpyxl", "" if importlib.util.find_spec("openpyxl") else "pip install openpyxl")
+    for mod, paquet in (("openpyxl", "openpyxl"), ("docx", "python-docx")):
+        ok = importlib.util.find_spec(mod) is not None
+        ligne(OK if ok else KO, paquet, "" if ok else f"pip install {paquet}")
 
     print("\nVariables d'environnement (lues par .mcp.json et opencode.json)")
     index = os.environ.get("SQUASH_MCP_INDEX", "")

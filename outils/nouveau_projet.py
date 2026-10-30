@@ -72,10 +72,10 @@ def main():
         "# Documents d'entrée\n\nDéposer ici le cahier des charges, les User Stories, le DSF, les maquettes "
         "(PDF, DOCX, MD, images).\nPuis lancer `/analyser " + a.nom + "` dans Claude Code ou OpenCode.\n", encoding="utf-8")
     (d / "02-a-valider" / "LISEZMOI.md").write_text(
-        "# À valider\n\nL'agent écrit ici le résultat de l'analyse. Relire `cas-de-tests.md`, `ambiguites.md` et "
-        "`jeux-de-donnees.md`.\nPour une correction : `/corriger " + a.nom + " <demande>`.\n"
-        "Pour valider : DÉPLACER `cas-de-tests.json`, `cas-de-tests.md`, `ambiguites.md` et `jeux-de-donnees.md` "
-        "dans `03-valide/`.\n", encoding="utf-8")
+        "# À valider\n\nL'agent écrit ici le résultat de l'analyse. Relire `cas-de-tests.md` (ou `cas-de-tests.xlsx`, "
+        "ou `cas-de-tests.docx`), `ambiguites.md` et `jeux-de-donnees.md`.\n"
+        "Pour corriger : modifier l'Excel OU le Word puis `/corriger " + a.nom + "`, ou `/corriger " + a.nom + " <demande>`.\n"
+        "Pour valider : DÉPLACER tout le contenu de ce dossier dans `03-valide/`.\n", encoding="utf-8")
     journaliser(d, "nouveau-projet", "projet créé", ["projet.json"])
     print(f"Projet créé : {d}")
     print("À compléter dans projet.json : client, environnement, ID Squash, auteur et contact du cahier.")

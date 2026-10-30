@@ -1,0 +1,1156 @@
+{
+ "empreinte_json": "b3dafa43ba689363",
+ "projection": {
+  "exigences": [
+   {
+    "id": "EX-001",
+    "fonctionnalite": "Authentification",
+    "titre": "Se connecter avec un nom d'utilisateur et un mot de passe",
+    "description": "L'utilisateur se connecte avec un nom d'utilisateur et un mot de passe. Après connexion, il arrive sur la page « Products » qui affiche le catalogue.",
+    "source": "CDC §2.1",
+    "criticite": "CRITICAL",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": []
+   },
+   {
+    "id": "EX-002",
+    "fonctionnalite": "Authentification",
+    "titre": "Rendre obligatoires le nom d'utilisateur et le mot de passe",
+    "description": "Les deux champs sont obligatoires. Si l'un d'eux est vide, un message d'erreur indique le champ manquant.",
+    "source": "CDC §2.2",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-001"
+    ]
+   },
+   {
+    "id": "EX-003",
+    "fonctionnalite": "Authentification",
+    "titre": "Refuser des identifiants incorrects",
+    "description": "Si le couple identifiant / mot de passe est incorrect, la connexion est refusée avec un message d'erreur.",
+    "source": "CDC §2.3",
+    "criticite": "CRITICAL",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-001"
+    ]
+   },
+   {
+    "id": "EX-004",
+    "fonctionnalite": "Authentification",
+    "titre": "Refuser la connexion d'un compte verrouillé",
+    "description": "Un compte peut être verrouillé par l'administrateur. Un utilisateur verrouillé ne peut pas se connecter et un message lui indique que son compte est bloqué.",
+    "source": "CDC §2.4",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-001",
+     "Q-002"
+    ]
+   },
+   {
+    "id": "EX-005",
+    "fonctionnalite": "Authentification",
+    "titre": "Se déconnecter depuis le menu latéral",
+    "description": "L'utilisateur peut se déconnecter depuis le menu latéral. Après déconnexion, il revient sur la page de connexion et ne peut plus accéder aux pages internes sans se reconnecter.",
+    "source": "CDC §2.5",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": []
+   },
+   {
+    "id": "EX-006",
+    "fonctionnalite": "Catalogue",
+    "titre": "Afficher le catalogue des articles",
+    "description": "La page « Products » affiche la liste des articles avec, pour chacun : image, nom, description, prix et un bouton « Add to cart ».",
+    "source": "CDC §3.1",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": []
+   },
+   {
+    "id": "EX-007",
+    "fonctionnalite": "Catalogue",
+    "titre": "Trier le catalogue par nom ou par prix",
+    "description": "L'utilisateur peut trier la liste par nom (A à Z, Z à A) et par prix (croissant, décroissant). Le tri par défaut est par nom de A à Z.",
+    "source": "CDC §3.2",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": []
+   },
+   {
+    "id": "EX-008",
+    "fonctionnalite": "Catalogue",
+    "titre": "Consulter la fiche détaillée d'un article",
+    "description": "Un clic sur le nom d'un article ouvre sa fiche détaillée, avec un bouton de retour vers le catalogue.",
+    "source": "CDC §3.3",
+    "criticite": "MINOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": []
+   },
+   {
+    "id": "EX-009",
+    "fonctionnalite": "Panier",
+    "titre": "Ajouter un article au panier",
+    "description": "Le bouton « Add to cart » ajoute l'article au panier ; il devient alors « Remove ». L'icône du panier affiche le nombre d'articles.",
+    "source": "CDC §4.1",
+    "criticite": "CRITICAL",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": []
+   },
+   {
+    "id": "EX-010",
+    "fonctionnalite": "Panier",
+    "titre": "Consulter et modifier le contenu du panier",
+    "description": "Le panier liste les articles ajoutés avec leur quantité, leur nom et leur prix. L'utilisateur peut retirer un article depuis le panier.",
+    "source": "CDC §4.2",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-009"
+    ]
+   },
+   {
+    "id": "EX-011",
+    "fonctionnalite": "Panier",
+    "titre": "Conserver le panier pendant la navigation",
+    "description": "Le contenu du panier est conservé pendant la navigation dans l'application.",
+    "source": "CDC §4.3",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-006"
+    ]
+   },
+   {
+    "id": "EX-012",
+    "fonctionnalite": "Commande",
+    "titre": "Saisir les informations de commande obligatoires",
+    "description": "Depuis le panier, le bouton « Checkout » ouvre le formulaire d'informations : prénom, nom et code postal. Les trois champs sont obligatoires.",
+    "source": "CDC §5.1",
+    "criticite": "CRITICAL",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-001",
+     "Q-008"
+    ]
+   },
+   {
+    "id": "EX-013",
+    "fonctionnalite": "Commande",
+    "titre": "Afficher un récapitulatif de commande au total exact",
+    "description": "L'étape suivante présente un récapitulatif : articles, moyen de paiement, mode de livraison, total hors taxes, taxes et total. Le total doit être égal à la somme des prix des articles plus les taxes.",
+    "source": "CDC §5.2",
+    "criticite": "CRITICAL",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-003",
+     "Q-007"
+    ]
+   },
+   {
+    "id": "EX-014",
+    "fonctionnalite": "Commande",
+    "titre": "Valider la commande et vider le panier",
+    "description": "Le bouton « Finish » valide la commande et affiche un message de confirmation. Le panier est alors vidé.",
+    "source": "CDC §5.3",
+    "criticite": "CRITICAL",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-007"
+    ]
+   },
+   {
+    "id": "EX-015",
+    "fonctionnalite": "Commande",
+    "titre": "Interdire une commande avec un panier vide",
+    "description": "Une commande ne doit pas pouvoir être passée avec un panier vide.",
+    "source": "CDC §5.4",
+    "criticite": "MAJOR",
+    "categorie": "CAT_FUNCTIONAL",
+    "questions": [
+     "Q-005"
+    ]
+   },
+   {
+    "id": "EX-016",
+    "fonctionnalite": "Exigences non fonctionnelles",
+    "titre": "Offrir des temps de réponse rapides",
+    "description": "L'application doit être rapide.",
+    "source": "CDC §6.1",
+    "criticite": "MINOR",
+    "categorie": "CAT_PERFORMANCE",
+    "questions": [
+     "Q-004"
+    ]
+   },
+   {
+    "id": "EX-017",
+    "fonctionnalite": "Authentification",
+    "titre": "Ne jamais afficher les mots de passe en clair",
+    "description": "Les mots de passe ne doivent jamais apparaître en clair à l'écran.",
+    "source": "CDC §6.2",
+    "criticite": "MAJOR",
+    "categorie": "CAT_SECURITY",
+    "questions": []
+   }
+  ],
+  "cas": [
+   {
+    "id": "CT0001",
+    "fonctionnalite": "Authentification",
+    "titre": "Se connecter avec un compte valide",
+    "exigences": [
+     "EX-001"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "VERY_HIGH",
+    "prerequis": "Avoir le lien de l'application et le compte standard JDD-001. Être déconnecté.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Ouvrir le lien de l'application",
+      "resultat_attendu": "La page de connexion affiche les champs nom d'utilisateur et mot de passe et le bouton de connexion."
+     },
+     {
+      "action": "Renseigner le nom d'utilisateur et le mot de passe du compte JDD-001",
+      "resultat_attendu": "Les deux champs sont remplis ; le mot de passe est masqué."
+     },
+     {
+      "action": "Cliquer sur le bouton de connexion",
+      "resultat_attendu": "La page « Products » s'affiche avec la liste des articles du catalogue."
+     }
+    ]
+   },
+   {
+    "id": "CT0002",
+    "fonctionnalite": "Authentification",
+    "titre": "Bloquer la connexion sans nom d'utilisateur",
+    "exigences": [
+     "EX-002"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "HIGH",
+    "prerequis": "Être sur la page de connexion. Disposer du mot de passe du compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Laisser le champ nom d'utilisateur vide et renseigner le mot de passe",
+      "resultat_attendu": "Seul le champ mot de passe est rempli."
+     },
+     {
+      "action": "Cliquer sur le bouton de connexion",
+      "resultat_attendu": "La connexion est refusée : l'utilisateur reste sur la page de connexion et un message d'erreur indique que le nom d'utilisateur est obligatoire."
+     }
+    ]
+   },
+   {
+    "id": "CT0003",
+    "fonctionnalite": "Authentification",
+    "titre": "Bloquer la connexion sans mot de passe",
+    "exigences": [
+     "EX-002"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "HIGH",
+    "prerequis": "Être sur la page de connexion. Disposer du nom d'utilisateur du compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Renseigner le nom d'utilisateur et laisser le champ mot de passe vide",
+      "resultat_attendu": "Seul le champ nom d'utilisateur est rempli."
+     },
+     {
+      "action": "Cliquer sur le bouton de connexion",
+      "resultat_attendu": "La connexion est refusée : l'utilisateur reste sur la page de connexion et un message d'erreur indique que le mot de passe est obligatoire."
+     }
+    ]
+   },
+   {
+    "id": "CT0004",
+    "fonctionnalite": "Authentification",
+    "titre": "Bloquer la connexion avec les deux champs vides",
+    "exigences": [
+     "EX-002"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "MEDIUM",
+    "prerequis": "Être sur la page de connexion.",
+    "description": "",
+    "jeux_de_donnees": [],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Laisser les deux champs vides et cliquer sur le bouton de connexion",
+      "resultat_attendu": "La connexion est refusée : l'utilisateur reste sur la page de connexion et un message d'erreur indique un champ manquant."
+     }
+    ]
+   },
+   {
+    "id": "CT0005",
+    "fonctionnalite": "Authentification",
+    "titre": "Refuser un mot de passe incorrect",
+    "exigences": [
+     "EX-003"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "table-decision",
+    "importance": "HIGH",
+    "prerequis": "Être sur la page de connexion. Disposer du nom d'utilisateur du compte JDD-001 et du mot de passe erroné de JDD-003.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-003"
+    ],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Renseigner le nom d'utilisateur du compte JDD-001 et le mot de passe erroné de JDD-003",
+      "resultat_attendu": "Les deux champs sont remplis."
+     },
+     {
+      "action": "Cliquer sur le bouton de connexion",
+      "resultat_attendu": "La connexion est refusée : l'utilisateur reste sur la page de connexion et un message d'erreur s'affiche ; la page « Products » n'est pas accessible."
+     }
+    ]
+   },
+   {
+    "id": "CT0006",
+    "fonctionnalite": "Authentification",
+    "titre": "Refuser un nom d'utilisateur inconnu",
+    "exigences": [
+     "EX-003"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "table-decision",
+    "importance": "HIGH",
+    "prerequis": "Être sur la page de connexion.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-003"
+    ],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Renseigner le nom d'utilisateur inconnu et le mot de passe de JDD-003",
+      "resultat_attendu": "Les deux champs sont remplis."
+     },
+     {
+      "action": "Cliquer sur le bouton de connexion",
+      "resultat_attendu": "La connexion est refusée : l'utilisateur reste sur la page de connexion et un message d'erreur s'affiche."
+     }
+    ]
+   },
+   {
+    "id": "CT0007",
+    "fonctionnalite": "Authentification",
+    "titre": "Refuser la connexion d'un compte verrouillé",
+    "exigences": [
+     "EX-004"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "transition-etats",
+    "importance": "HIGH",
+    "prerequis": "Être sur la page de connexion. Disposer d'un compte verrouillé par l'administrateur (JDD-002).",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-002"
+    ],
+    "questions": [
+     "Q-001",
+     "Q-002"
+    ],
+    "etapes": [
+     {
+      "action": "Renseigner le nom d'utilisateur et le mot de passe du compte verrouillé JDD-002",
+      "resultat_attendu": "Les deux champs sont remplis."
+     },
+     {
+      "action": "Cliquer sur le bouton de connexion",
+      "resultat_attendu": "La connexion est refusée et un message indique que le compte est bloqué ; la page « Products » n'est pas accessible."
+     }
+    ]
+   },
+   {
+    "id": "CT0008",
+    "fonctionnalite": "Authentification",
+    "titre": "Masquer le mot de passe lors de la saisie",
+    "exigences": [
+     "EX-017"
+    ],
+    "type": "nominal",
+    "type_test": "securite",
+    "technique": "criteres-acceptation",
+    "importance": "HIGH",
+    "prerequis": "Être sur la page de connexion. Disposer du compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Saisir le mot de passe du compte JDD-001 dans le champ mot de passe",
+      "resultat_attendu": "Les caractères saisis sont remplacés par des symboles de masquage ; le mot de passe n'apparaît pas en clair."
+     }
+    ]
+   },
+   {
+    "id": "CT0009",
+    "fonctionnalite": "Authentification",
+    "titre": "Se déconnecter depuis le menu latéral",
+    "exigences": [
+     "EX-005"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001 et se trouver sur la page « Products ».",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Ouvrir le menu latéral",
+      "resultat_attendu": "Le menu latéral s'affiche avec l'option de déconnexion."
+     },
+     {
+      "action": "Cliquer sur l'option de déconnexion",
+      "resultat_attendu": "La page de connexion s'affiche."
+     }
+    ]
+   },
+   {
+    "id": "CT0010",
+    "fonctionnalite": "Authentification",
+    "titre": "Interdire l'accès aux pages internes après déconnexion",
+    "exigences": [
+     "EX-005"
+    ],
+    "type": "negatif",
+    "type_test": "securite",
+    "technique": "transition-etats",
+    "importance": "HIGH",
+    "prerequis": "Avoir relevé l'adresse de la page « Products » pendant une session, puis s'être déconnecté (CT0009).",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Saisir dans le navigateur l'adresse de la page « Products » relevée pendant la session",
+      "resultat_attendu": "La page « Products » ne s'affiche pas : l'utilisateur est renvoyé vers la page de connexion."
+     }
+    ]
+   },
+   {
+    "id": "CT0011",
+    "fonctionnalite": "Catalogue",
+    "titre": "Afficher le catalogue avec les informations de chaque article",
+    "exigences": [
+     "EX-006"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Observer la page « Products »",
+      "resultat_attendu": "Chaque article de la liste présente une image, un nom, une description, un prix et un bouton « Add to cart »."
+     }
+    ]
+   },
+   {
+    "id": "CT0012",
+    "fonctionnalite": "Catalogue",
+    "titre": "Vérifier le tri par défaut par nom de A à Z",
+    "exigences": [
+     "EX-007"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "MEDIUM",
+    "prerequis": "Être connecté avec le compte JDD-001, sans avoir modifié le tri.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Observer l'ordre des articles de la page « Products » et le tri sélectionné",
+      "resultat_attendu": "Le tri sélectionné est le tri par nom de A à Z et les noms des articles sont rangés par ordre alphabétique croissant."
+     }
+    ]
+   },
+   {
+    "id": "CT0013",
+    "fonctionnalite": "Catalogue",
+    "titre": "Trier les articles par nom de Z à A",
+    "exigences": [
+     "EX-007"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "MEDIUM",
+    "prerequis": "Être connecté avec le compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Choisir le tri par nom de Z à A",
+      "resultat_attendu": "Les noms des articles sont rangés par ordre alphabétique décroissant."
+     }
+    ]
+   },
+   {
+    "id": "CT0014",
+    "fonctionnalite": "Catalogue",
+    "titre": "Trier les articles par prix croissant",
+    "exigences": [
+     "EX-007"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "MEDIUM",
+    "prerequis": "Être connecté avec le compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Choisir le tri par prix croissant",
+      "resultat_attendu": "Les articles sont rangés du prix le plus bas au prix le plus élevé."
+     }
+    ]
+   },
+   {
+    "id": "CT0015",
+    "fonctionnalite": "Catalogue",
+    "titre": "Trier les articles par prix décroissant",
+    "exigences": [
+     "EX-007"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "MEDIUM",
+    "prerequis": "Être connecté avec le compte JDD-001.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Choisir le tri par prix décroissant",
+      "resultat_attendu": "Les articles sont rangés du prix le plus élevé au prix le plus bas."
+     }
+    ]
+   },
+   {
+    "id": "CT0016",
+    "fonctionnalite": "Catalogue",
+    "titre": "Ouvrir la fiche d'un article et revenir au catalogue",
+    "exigences": [
+     "EX-008"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "LOW",
+    "prerequis": "Être connecté avec le compte JDD-001 et se trouver sur la page « Products ».",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Cliquer sur le nom d'un article",
+      "resultat_attendu": "La fiche détaillée de l'article s'affiche avec le même nom et le même prix que dans la liste, et un bouton de retour."
+     },
+     {
+      "action": "Cliquer sur le bouton de retour",
+      "resultat_attendu": "La page « Products » s'affiche de nouveau."
+     }
+    ]
+   },
+   {
+    "id": "CT0017",
+    "fonctionnalite": "Panier",
+    "titre": "Ajouter un article au panier depuis le catalogue",
+    "exigences": [
+     "EX-009"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "VERY_HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, panier vide.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-005"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Cliquer sur « Add to cart » pour un article de la page « Products »",
+      "resultat_attendu": "Le bouton de cet article devient « Remove » et l'icône du panier affiche 1."
+     },
+     {
+      "action": "Cliquer sur « Add to cart » pour un deuxième article",
+      "resultat_attendu": "L'icône du panier affiche 2."
+     }
+    ]
+   },
+   {
+    "id": "CT0018",
+    "fonctionnalite": "Panier",
+    "titre": "Afficher dans le panier les articles ajoutés",
+    "exigences": [
+     "EX-010"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001 et avoir ajouté les deux articles de JDD-005 au panier.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-005"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Cliquer sur l'icône du panier",
+      "resultat_attendu": "Le panier liste les deux articles ajoutés, chacun avec sa quantité, son nom et son prix identiques à ceux du catalogue."
+     }
+    ]
+   },
+   {
+    "id": "CT0019",
+    "fonctionnalite": "Panier",
+    "titre": "Retirer un article depuis le panier",
+    "exigences": [
+     "EX-010"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, avoir ajouté les deux articles de JDD-005 et ouvert le panier.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-005"
+    ],
+    "questions": [
+     "Q-009"
+    ],
+    "etapes": [
+     {
+      "action": "Retirer le premier article depuis le panier",
+      "resultat_attendu": "L'article disparaît de la liste du panier et l'icône du panier affiche 1."
+     }
+    ]
+   },
+   {
+    "id": "CT0020",
+    "fonctionnalite": "Panier",
+    "titre": "Conserver le panier pendant la navigation",
+    "exigences": [
+     "EX-011"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "MEDIUM",
+    "prerequis": "Être connecté avec le compte JDD-001 et avoir ajouté les deux articles de JDD-005.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-005"
+    ],
+    "questions": [
+     "Q-006"
+    ],
+    "etapes": [
+     {
+      "action": "Ouvrir la fiche détaillée d'un autre article, puis revenir à la page « Products »",
+      "resultat_attendu": "L'icône du panier affiche toujours 2 et les boutons des deux articles ajoutés affichent « Remove »."
+     },
+     {
+      "action": "Ouvrir le panier",
+      "resultat_attendu": "Le panier liste toujours les deux articles ajoutés."
+     }
+    ]
+   },
+   {
+    "id": "CT0021",
+    "fonctionnalite": "Commande",
+    "titre": "Passer une commande complète",
+    "exigences": [
+     "EX-012",
+     "EX-013",
+     "EX-014"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "VERY_HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001 et avoir ajouté les deux articles de JDD-005 au panier. Disposer des informations de livraison JDD-004.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-004",
+     "JDD-005"
+    ],
+    "questions": [
+     "Q-007"
+    ],
+    "etapes": [
+     {
+      "action": "Ouvrir le panier et cliquer sur « Checkout »",
+      "resultat_attendu": "Le formulaire d'informations s'affiche avec les champs prénom, nom et code postal."
+     },
+     {
+      "action": "Renseigner le prénom, le nom et le code postal de JDD-004, puis passer à l'étape suivante",
+      "resultat_attendu": "Le récapitulatif s'affiche avec les articles, le moyen de paiement, le mode de livraison, le total hors taxes, les taxes et le total."
+     },
+     {
+      "action": "Cliquer sur « Finish »",
+      "resultat_attendu": "Un message de confirmation de commande s'affiche."
+     }
+    ]
+   },
+   {
+    "id": "CT0022",
+    "fonctionnalite": "Commande",
+    "titre": "Bloquer la commande sans prénom",
+    "exigences": [
+     "EX-012"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, avoir un article dans le panier et ouvrir le formulaire d'informations.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-004"
+    ],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Laisser le prénom vide, renseigner le nom et le code postal de JDD-004, puis tenter de passer à l'étape suivante",
+      "resultat_attendu": "Le récapitulatif ne s'affiche pas ; un message d'erreur indique que le prénom est obligatoire."
+     }
+    ]
+   },
+   {
+    "id": "CT0023",
+    "fonctionnalite": "Commande",
+    "titre": "Bloquer la commande sans nom",
+    "exigences": [
+     "EX-012"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, avoir un article dans le panier et ouvrir le formulaire d'informations.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-004"
+    ],
+    "questions": [
+     "Q-001"
+    ],
+    "etapes": [
+     {
+      "action": "Laisser le nom vide, renseigner le prénom et le code postal de JDD-004, puis tenter de passer à l'étape suivante",
+      "resultat_attendu": "Le récapitulatif ne s'affiche pas ; un message d'erreur indique que le nom est obligatoire."
+     }
+    ]
+   },
+   {
+    "id": "CT0024",
+    "fonctionnalite": "Commande",
+    "titre": "Bloquer la commande sans code postal",
+    "exigences": [
+     "EX-012"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "partitions-equivalence",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, avoir un article dans le panier et ouvrir le formulaire d'informations.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-004"
+    ],
+    "questions": [
+     "Q-001",
+     "Q-008"
+    ],
+    "etapes": [
+     {
+      "action": "Laisser le code postal vide, renseigner le prénom et le nom de JDD-004, puis tenter de passer à l'étape suivante",
+      "resultat_attendu": "Le récapitulatif ne s'affiche pas ; un message d'erreur indique que le code postal est obligatoire."
+     }
+    ]
+   },
+   {
+    "id": "CT0025",
+    "fonctionnalite": "Commande",
+    "titre": "Vérifier le calcul du total du récapitulatif",
+    "exigences": [
+     "EX-013"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "cas-d-usage",
+    "importance": "VERY_HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, avoir ajouté les deux articles de JDD-005 et atteint le récapitulatif avec les informations JDD-004.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001",
+     "JDD-004",
+     "JDD-005"
+    ],
+    "questions": [
+     "Q-003"
+    ],
+    "etapes": [
+     {
+      "action": "Relever le prix de chaque article et le total hors taxes du récapitulatif",
+      "resultat_attendu": "Le total hors taxes est égal à la somme des prix des articles."
+     },
+     {
+      "action": "Relever les taxes et le total du récapitulatif",
+      "resultat_attendu": "Le total est égal au total hors taxes plus les taxes affichées."
+     }
+    ]
+   },
+   {
+    "id": "CT0026",
+    "fonctionnalite": "Commande",
+    "titre": "Vider le panier après validation de la commande",
+    "exigences": [
+     "EX-014"
+    ],
+    "type": "nominal",
+    "type_test": "fonctionnel",
+    "technique": "transition-etats",
+    "importance": "HIGH",
+    "prerequis": "Avoir validé une commande avec « Finish » (CT0021).",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [],
+    "etapes": [
+     {
+      "action": "Observer l'icône du panier puis ouvrir le panier",
+      "resultat_attendu": "L'icône du panier n'affiche plus de nombre et le panier ne contient aucun article."
+     }
+    ]
+   },
+   {
+    "id": "CT0027",
+    "fonctionnalite": "Commande",
+    "titre": "Empêcher une commande avec un panier vide",
+    "exigences": [
+     "EX-015"
+    ],
+    "type": "negatif",
+    "type_test": "fonctionnel",
+    "technique": "devinette-erreurs",
+    "importance": "HIGH",
+    "prerequis": "Être connecté avec le compte JDD-001, panier vide.",
+    "description": "",
+    "jeux_de_donnees": [
+     "JDD-001"
+    ],
+    "questions": [
+     "Q-005"
+    ],
+    "etapes": [
+     {
+      "action": "Ouvrir le panier vide et tenter de lancer la commande",
+      "resultat_attendu": "La commande ne peut pas être passée : le récapitulatif et le message de confirmation de commande ne sont pas accessibles."
+     }
+    ]
+   }
+  ],
+  "strategie": [
+   {
+    "id": "TT-01",
+    "type_test": "fonctionnel",
+    "decision": "retenu",
+    "niveau": "systeme",
+    "approche": "cas",
+    "objectif": "Vérifier les règles fonctionnelles des sections 2 à 5 du CDC (authentification, catalogue, panier, commande).",
+    "exigences": [
+     "EX-001",
+     "EX-002",
+     "EX-003",
+     "EX-004",
+     "EX-005",
+     "EX-006",
+     "EX-007",
+     "EX-008",
+     "EX-009",
+     "EX-010",
+     "EX-011",
+     "EX-012",
+     "EX-013",
+     "EX-014",
+     "EX-015"
+    ],
+    "cas": [
+     "CT0001",
+     "CT0002",
+     "CT0003",
+     "CT0004",
+     "CT0005",
+     "CT0006",
+     "CT0007",
+     "CT0009",
+     "CT0011",
+     "CT0012",
+     "CT0013",
+     "CT0014",
+     "CT0015",
+     "CT0016",
+     "CT0017",
+     "CT0018",
+     "CT0019",
+     "CT0020",
+     "CT0021",
+     "CT0022",
+     "CT0023",
+     "CT0024",
+     "CT0025",
+     "CT0026",
+     "CT0027"
+    ],
+    "outil": "Squash TM (exécution manuelle), Playwright (automatisation)",
+    "priorite": "haute",
+    "justification": "CDC §2 à §5 : exigences fonctionnelles explicites.",
+    "questions": []
+   },
+   {
+    "id": "TT-02",
+    "type_test": "securite",
+    "decision": "retenu",
+    "niveau": "systeme",
+    "approche": "cas",
+    "objectif": "Vérifier le masquage du mot de passe et l'impossibilité d'accéder aux pages internes sans session.",
+    "exigences": [
+     "EX-017",
+     "EX-005"
+    ],
+    "cas": [
+     "CT0008",
+     "CT0010"
+    ],
+    "outil": "Playwright",
+    "priorite": "haute",
+    "justification": "CDC §6.2 (mots de passe jamais en clair) et §2.5 (pas d'accès aux pages internes après déconnexion). Aucun test intrusif (injection, force brute) sans autorisation écrite : non demandé par le CDC.",
+    "questions": []
+   },
+   {
+    "id": "TT-03",
+    "type_test": "performance",
+    "decision": "a-confirmer",
+    "niveau": "systeme",
+    "approche": "campagne-dediee",
+    "objectif": "Mesurer les temps de réponse des pages principales (connexion, catalogue, panier, commande) sous la charge attendue.",
+    "exigences": [
+     "EX-016"
+    ],
+    "cas": [],
+    "outil": "Gatling",
+    "priorite": "moyenne",
+    "justification": "CDC §6.1 « l'application doit être rapide » : exigence présente mais non mesurable ; seuils, pages et charge à définir avant toute campagne.",
+    "questions": [
+     "Q-004"
+    ]
+   },
+   {
+    "id": "TT-04",
+    "type_test": "compatibilite",
+    "decision": "a-confirmer",
+    "niveau": "",
+    "approche": "",
+    "objectif": "",
+    "exigences": [],
+    "cas": [],
+    "outil": "",
+    "priorite": "moyenne",
+    "justification": "Le CDC ne précise ni navigateurs ni appareils supportés ; une boutique en ligne est généralement utilisée sur plusieurs navigateurs et sur mobile.",
+    "questions": [
+     "Q-010"
+    ]
+   },
+   {
+    "id": "TT-05",
+    "type_test": "utilisabilite",
+    "decision": "a-confirmer",
+    "niveau": "",
+    "approche": "",
+    "objectif": "",
+    "exigences": [],
+    "cas": [],
+    "outil": "",
+    "priorite": "basse",
+    "justification": "Le CDC ne formule aucune exigence d'ergonomie ni d'accessibilité (RGAA, WCAG).",
+    "questions": [
+     "Q-011"
+    ]
+   },
+   {
+    "id": "TT-06",
+    "type_test": "fiabilite",
+    "decision": "non-retenu",
+    "niveau": "",
+    "approche": "",
+    "objectif": "",
+    "exigences": [],
+    "cas": [],
+    "outil": "",
+    "priorite": "",
+    "justification": "Aucune exigence de disponibilité, de tolérance aux pannes ou de reprise dans le CDC ; environnement de démonstration public.",
+    "questions": []
+   },
+   {
+    "id": "TT-07",
+    "type_test": "maintenabilite",
+    "decision": "non-retenu",
+    "niveau": "",
+    "approche": "",
+    "objectif": "",
+    "exigences": [],
+    "cas": [],
+    "outil": "",
+    "priorite": "",
+    "justification": "Relève de l'équipe de développement (revue de code, analyse statique) ; aucun accès au code source.",
+    "questions": []
+   },
+   {
+    "id": "TT-08",
+    "type_test": "portabilite",
+    "decision": "non-retenu",
+    "niveau": "",
+    "approche": "",
+    "objectif": "",
+    "exigences": [],
+    "cas": [],
+    "outil": "",
+    "priorite": "",
+    "justification": "Application web hébergée par le fournisseur : aucune installation ni migration à tester d'après le CDC.",
+    "questions": []
+   },
+   {
+    "id": "TT-09",
+    "type_test": "confirmation",
+    "decision": "retenu",
+    "niveau": "systeme",
+    "approche": "cas",
+    "objectif": "Rejouer le cas qui a révélé une anomalie une fois celle-ci déclarée corrigée.",
+    "exigences": [],
+    "cas": [],
+    "outil": "Squash TM (campagne de re-test)",
+    "priorite": "haute",
+    "justification": "Pratique standard de recette (CTFL v4.0 §2.2.3) pour chaque anomalie corrigée.",
+    "questions": []
+   },
+   {
+    "id": "TT-10",
+    "type_test": "regression",
+    "decision": "retenu",
+    "niveau": "systeme",
+    "approche": "cas",
+    "objectif": "Rejouer à chaque nouvelle livraison les parcours principaux automatisés (smoke) puis l'ensemble des cas automatisés.",
+    "exigences": [],
+    "cas": [
+     "CT0001",
+     "CT0009",
+     "CT0011",
+     "CT0017",
+     "CT0018",
+     "CT0019",
+     "CT0021",
+     "CT0025",
+     "CT0026"
+    ],
+    "outil": "Playwright (tags @smoke et @regression)",
+    "priorite": "haute",
+    "justification": "Parcours bloquants pour le métier (importance HIGH ou VERY_HIGH) ; l'application évolue par livraisons successives.",
+    "questions": []
+   }
+  ]
+ }
+}
