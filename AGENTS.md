@@ -25,8 +25,8 @@ Identifiants stables : exigences `EX-001`, cas `CT0001`, questions `Q-001`, jeux
 TEMPS A — à réception du cahier des charges (pas besoin de l'application)
   01-entrant/            Le responsable du projet dépose le CDC, les US, le DSF, les maquettes
      │  /analyser <projet>
-  02-a-valider/          L'agent écrit : cas-de-tests.json (+ .md de relecture), ambiguites.md, jeux-de-donnees.md
-     │  Le responsable du projet relit, demande les corrections, puis DÉPLACE les fichiers dans 03-valide (= validation)
+  02-a-valider/          L'agent écrit : cas-de-tests.json (+ .md, .xlsx, .docx), ambiguites.md, jeux-de-donnees.md
+     │  Le responsable du projet relit, corrige (Excel ou Word, puis /corriger), puis DÉPLACE tout le contenu du dossier dans 03-valide (= validation)
   03-valide/
      │  /publier <projet>        → Squash : exigences + cas classiques liés (si le projet Squash existe)
      │  /specs <projet>          → specs d'automatisation BROUILLON (04-livrables/specs)
