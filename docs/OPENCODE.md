@@ -70,8 +70,7 @@ Vérification faite avec OpenCode 1.19.5 (`opencode debug config`, `opencode deb
 ## 5. Travailler à plusieurs sur le même dépôt
 
 - **Un projet, un responsable** (`projet.json` → `responsable`) : c'est lui qui valide en déplaçant les fichiers dans `03-valide`.
-- **Git** : committer après chaque étape (analyse, validation, publication, livrables). La validation devient un commit traçable : qui a validé quoi, et quand.
-- **Fichier de correspondance Squash** (`04-livrables/squash/correspondance.json`) : toujours le committer et le récupérer (`git pull`) avant de publier. Deux testeurs qui publient le même projet sans ce fichier à jour créent des doublons.
+- **Projets non versionnés** : `projets/` est exclu de Git (sauf l'exemple `saucedemo`), les projets restent sur le poste qui les a créés. Le fichier de correspondance Squash (`04-livrables/squash/correspondance.json`) n'est donc pas partagé : publier un projet toujours depuis le même poste, ou transmettre ce fichier à la main. Deux testeurs qui publient le même projet sans ce fichier créent des doublons.
 - **Commandes** : la source est `.claude/commands/`. Après une modification, lancer `python outils/synchroniser_opencode.py` et committer les deux dossiers. Les commandes propres à OpenCode (`/recette`) sont dans `outils/opencode/`.
 - **Skills** : un seul exemplaire, dans `.claude/skills/`, partagé par les deux outils.
 

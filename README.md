@@ -184,3 +184,4 @@ python outils/synchroniser_opencode.py         # après modification d'une comma
 - Un cas déjà publié puis modifié n'est pas mis à jour dans Squash (à faire à la main ; l'agent liste les cas concernés).
 - Cahier de tests : version française uniquement pour l'instant.
 - Les cahiers des charges sont envoyés au modèle d'IA : vérifier que le client l'autorise.
+- Les projets (`projets/<nom>/`) ne sont pas envoyés sur Git, à l'exception de l'exemple `saucedemo` (voir `.gitignore`) : ils restent sur le poste qui les a créés. Conséquence : le fichier `04-livrables/squash/correspondance.json`, qui évite les doublons dans Squash, n'est pas partagé. **Un projet doit donc toujours être publié depuis le même poste**, ou ce fichier doit être transmis à la main. Sauvegarder le dossier `projets/` par un autre moyen (OneDrive, serveur de fichiers).

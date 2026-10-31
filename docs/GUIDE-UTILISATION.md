@@ -24,7 +24,7 @@ projets/<projet>/
 │   └── matrice-tracabilite.md   exigences → cas (générée)
 ├── 03-valide/               même contenu, une fois validé (déplacé par le responsable)
 └── 04-livrables/
-    ├── squash/correspondance.json   lien identifiants ↔ Squash (généré, à committer)
+    ├── squash/correspondance.json   lien identifiants ↔ Squash (généré, à conserver)
     ├── specs/*.md                   specs d'automatisation (BROUILLON puis CONFIRMÉE)
     ├── exploration/                 découvertes, écarts, captures (temps B)
     ├── cahier/                      cahier de tests Excel + points à confirmer (temps B)
@@ -136,7 +136,7 @@ Générée par le contrôle. Pour chaque exigence : cas nominaux, cas négatifs 
 
 ### `squash/correspondance.json`
 
-Écrit par la publication : il relie chaque `EX-xxx` et `CT0001` à son identifiant dans Squash. C'est lui qui évite les doublons quand on republie après de nouveaux cas. **À committer après chaque publication et à récupérer (`git pull`) avant de publier.** Ne jamais le modifier ni le supprimer.
+Écrit par la publication : il relie chaque `EX-xxx` et `CT0001` à son identifiant dans Squash. C'est lui qui évite les doublons quand on republie après de nouveaux cas. Les projets n'étant pas envoyés sur Git, ce fichier reste sur le poste qui a publié : **publier un projet toujours depuis le même poste**, ou transmettre ce fichier à la main au collègue qui reprend. Ne jamais le modifier ni le supprimer.
 
 ### `specs/<fonctionnalite>.md` — specs d'automatisation
 
@@ -182,7 +182,7 @@ Version « recette client » (parcours nominaux uniquement) : `/cahier <projet> 
 
 ### `journal.md`
 
-Une ligne par étape (date, commande, résultat, fichiers). C'est l'historique à consulter pour savoir ce qui a été fait, notamment quand plusieurs testeurs travaillent sur le projet. Avec Git, chaque validation devient aussi un commit traçable.
+Une ligne par étape (date, commande, résultat, fichiers). C'est l'historique à consulter pour savoir ce qui a été fait, notamment quand plusieurs testeurs travaillent sur le projet.
 
 ## 6. Les documents de référence (`docs/`)
 
@@ -220,4 +220,4 @@ Utilisables sans agent, depuis le dossier `qa-factory` :
 
 **Le contrôle affiche des avertissements.** Ils ne bloquent pas, mais chacun doit être lu : soit on corrige, soit on le garde volontairement (par exemple un cas suspendu à une question bloquante en attente du client).
 
-**Deux testeurs sur le même projet ?** Un seul responsable valide. Committer après chaque étape et faire `git pull` avant de publier dans Squash.
+**Deux testeurs sur le même projet ?** Un seul responsable valide et publie, depuis son poste. Les projets ne sont pas sur Git (seul l'exemple `saucedemo` l'est) : pour passer un projet à un collègue, lui transmettre le dossier `projets/<nom>/` complet, `04-livrables/squash/correspondance.json` compris. Sauvegarder `projets/` (OneDrive, serveur de fichiers).

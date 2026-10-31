@@ -34,7 +34,7 @@ Outil : serveur MCP `squash-tm` (fork `squash-tm-mcp`, vérifié sur Squash TM 9
 - ce qui a été créé, avec les dossiers Squash (noms des fonctionnalités) ;
 - ce qui existait déjà ;
 - les avertissements (questions bloquantes publiées, cas sans exigence…) ;
-- rappel : la correspondance est à garder sous Git avec le JSON validé.
+- rappel : `correspondance.json` est à conserver avec le projet (les projets ne sont pas sur Git) ; republier ce projet depuis ce poste, ou transmettre ce fichier avec le dossier du projet.
 
 ## Interdits
 

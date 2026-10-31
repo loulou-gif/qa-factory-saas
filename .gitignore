@@ -4,3 +4,9 @@ __pycache__/
 *.pyc
 ~$*
 .claude/settings.local.json
+
+# Projets : seuls les projets d'exemple sont versionnés.
+# Les projets réels (cahiers des charges clients, analyses, livrables) restent sur le poste.
+# Pour versionner un projet malgré tout : ajouter une ligne « !projets/<nom>/ » ci-dessous.
+projets/*
+!projets/saucedemo/
