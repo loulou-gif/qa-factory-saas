@@ -1,0 +1,59 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "{env:QAF_MODELE}",
+  "small_model": "{env:QAF_MODELE}",
+  "provider": {
+    "openrouter": {
+      "options": {
+        "apiKey": "{env:OPENROUTER_API_KEY}"
+      }
+    }
+  },
+  "share": "disabled",
+  "autoupdate": false,
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@latest",
+        "--headless",
+        "--isolated"
+      ],
+      "enabled": false
+    }
+  },
+  "permission": {
+    "edit": "allow",
+    "skill": "allow",
+    "webfetch": "deny",
+    "external_directory": "deny",
+    "bash": {
+      "*": "ask",
+      "python outils/*": "allow",
+      "python3 outils/*": "allow",
+      "pandoc *": "allow",
+      "npx playwright test*": "allow",
+      "rm *": "deny"
+    },
+    "squash-tm_publish_validated_test_cases": "deny",
+    "squash-tm_create_requirement": "deny",
+    "squash-tm_create_requirement_folder": "deny",
+    "squash-tm_create_test_case_folder": "deny",
+    "squash-tm_create_standard_test_case": "deny",
+    "squash-tm_add_action_step": "deny",
+    "squash-tm_link_requirements_to_test_case": "deny",
+    "squash-tm_link_requirements_to_test_step": "deny",
+    "squash-tm_mark_test_case_automated": "deny",
+    "squash-tm_create_keyword_test_case": "deny",
+    "squash-tm_create_bdd_test_case": "deny",
+    "squash-tm_update_bdd_test_case": "deny",
+    "squash-tm_create_test_step": "deny",
+    "squash-tm_update_test_step": "deny",
+    "squash-tm_add_step_to_bdd_test_case": "deny",
+    "squash-tm_update_step_in_bdd_test_case": "deny",
+    "squash-tm_transmit_test_case": "deny",
+    "squash-tm_run_automated_suite_batch": "deny"
+  }
+}

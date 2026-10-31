@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "simulation": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Faux modèle (démonstration)",
+      "options": {
+        "baseURL": "{env:QAF_FAUX_MODELE_URL}",
+        "apiKey": "sans-cle"
+      },
+      "models": {
+        "demo": {
+          "name": "demo",
+          "tool_call": true
+        }
+      }
+    }
+  }
+}

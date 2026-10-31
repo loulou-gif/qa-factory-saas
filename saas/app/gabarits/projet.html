@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block titre %}{{ fiche.nom }} — QA Factory{% endblock %}
+{% macro cls(faite, courante) %}{{ 'faite' if faite else ('courante' if courante else '') }}{% endmacro %}
+{% macro bouton_form(action, libelle, classe='', confirmer='', desactive=False) %}
+<form class="en-ligne" method="post" action="{{ action }}" {% if confirmer %}data-confirmer="{{ confirmer }}"{% endif %}>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit" class="{{ classe }}" {% if desactive %}disabled{% endif %}>{{ libelle }}</button>
+</form>
+{% endmacro %}
+{% block contenu %}
+{% set app_ = fiche.application or {} %}
+{% set sq = (fiche.squash or {}).projet_id %}
+{% set av = e.a_valider %}{% set va = e.valide %}
+<p class="discret"><a href="/">Projets</a> / {{ code }}</p>
+<h1>{{ fiche.nom }}</h1>
+<p class="sous-titre">
+  Responsable : {{ (pdb.responsable_nom if pdb else None) or fiche.responsable or '—' }}
+  · Site : {% if app_.url %}<a href="{{ app_.url }}" target="_blank" rel="noopener">{{ app_.url }}</a>{% else %}pas encore disponible{% endif %}
+  · Squash : {{ ('projet n° ' ~ sq) if sq else 'non renseigné' }}
+</p>
+{% if active %}<div class="flash">Tâche en cours : <a href="/taches/{{ active.id }}">{{ TYPES[active.type] }} (n° {{ active.id }})</a>. Les autres actions sur ce projet attendent sa fin.</div>{% endif %}
+
+<div class="grille">
+<div>
+
+<section class="carte etape {{ cls(e.documents, e.etape == 'documents') }}" id="documents">
+  <h2><span class="numero">1</span>Documents d'entrée</h2>
+  <p class="discret">Cahier des charges, User Stories, DSF, maquettes ({{ extensions }}).</p>
+  {% if docs_entrants %}
+  <ul class="liste-fichiers">
+    {% for f in docs_entrants %}
+    <li><a href="/projets/{{ code }}/telecharger/01-entrant/{{ f.name }}">{{ f.name }}</a>
+      {% if not av and not va %}<form class="en-ligne" method="post" action="/projets/{{ code }}/documents/retirer" data-confirmer="Retirer {{ f.name }} ?"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="nom" value="{{ f.name }}"><button type="submit" class="secondaire">Retirer</button></form>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if not av and not va %}
+  <form method="post" action="/projets/{{ code }}/documents" enctype="multipart/form-data" class="actions">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="file" name="fichiers" multiple required>
+    <button type="submit" class="secondaire">Déposer</button>
+  </form>
+  {% else %}<p class="discret">L'analyse a été faite sur ces documents ; ils ne se modifient plus.</p>{% endif %}
+</section>
+
+<section class="carte etape {{ cls(av or va, e.etape == 'analyse') }}" id="analyse">
+  <h2><span class="numero">2</span>Analyse par l'IA</h2>
+  {% if not av and not va %}
+  <p>L'agent lit les documents et produit les cas de tests (techniques ISTQB), la stratégie des types de tests, les questions au client et les jeux de données. Compter de 5 à 30 minutes selon la taille du cahier des charges.</p>
+  <div class="actions">{{ bouton_form('/projets/' ~ code ~ '/analyser', "Lancer l'analyse", '', '', not e.documents or active) }}
+  {% if not e.documents %}<span class="discret">Déposer d'abord le cahier des charges.</span>{% endif %}</div>
+  {% else %}
+  <p>Analyse faite.{% for t in taches if t.type == 'analyser' %}{% if loop.first %} <a href="/taches/{{ t.id }}">Voir le déroulé (tâche n° {{ t.id }})</a>.{% endif %}{% endfor %}</p>
+  {% endif %}
+</section>
+
+<section class="carte etape {{ cls(va, e.etape == 'relecture') }}" id="relecture">
+  <h2><span class="numero">3</span>Relecture, corrections et validation</h2>
+  {% if av and not av.illisible %}
+  <div class="chiffres">
+    <div><strong>v{{ av.version }}</strong><span class="discret">version</span></div>
+    <div><strong>{{ av.exigences }}</strong><span class="discret">exigences</span></div>
+    <div><strong>{{ av.cas }}</strong><span class="discret">cas de tests</span></div>
+    <div><strong>{{ av.questions_ouvertes }}</strong><span class="discret">questions ouvertes</span></div>
+  </div>
+  {% if av.bloquantes %}<p><span class="etiquette erreur">Questions bloquantes : {{ av.bloquantes|join(', ') }}</span> <span class="discret">Les cas concernés ne seront justes qu'après la réponse du client.</span></p>{% endif %}
+  <h3>Relire</h3>
+  <div class="actions">
+    <a class="bouton" href="/projets/{{ code }}/cas/a-valider">Relire en ligne</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/telecharger/02-a-valider/cas-de-tests.xlsx">Excel des cas</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/telecharger/02-a-valider/cas-de-tests.docx">Word des cas</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/lire/02-a-valider/ambiguites.md">Questions au client</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/lire/02-a-valider/jeux-de-donnees.md">Jeux de données</a>
+  </div>
+  <h3>Corriger</h3>
+  {% if modifiees %}<div class="flash erreur">Modifications non reportées dans : {{ modifiees|join(', ') }}.</div>{% endif %}
+  {% if synchro %}
+    {% if synchro.conflit %}
+    <div class="attente">
+      <strong>L'Excel et le Word ont été modifiés différemment.</strong> Choisir le fichier à garder : les modifications de l'autre seront perdues.
+      <pre>{{ synchro.sortie }}</pre>
+      <div class="actions">
+        <form class="en-ligne" method="post" action="/projets/{{ code }}/conflit"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="source" value="xlsx"><button type="submit">Garder l'Excel</button></form>
+        <form class="en-ligne" method="post" action="/projets/{{ code }}/conflit"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="source" value="docx"><button type="submit">Garder le Word</button></form>
+      </div>
+    </div>
+    {% else %}<details {% if synchro.code %}open{% endif %}><summary>Détail de la prise en compte</summary><pre>{{ synchro.sortie }}</pre></details>{% endif %}
+  {% endif %}
+  <p class="discret">Modifier l'Excel <strong>ou</strong> le Word téléchargé, l'enregistrer sans changer son nom, puis le renvoyer : tout le reste est mis à jour.</p>
+  <form method="post" action="/projets/{{ code }}/vue" enctype="multipart/form-data" class="actions">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="file" name="fichier" accept=".xlsx,.docx" required>
+    <button type="submit" class="secondaire" {% if active %}disabled{% endif %}>Renvoyer le fichier modifié</button>
+  </form>
+  <form method="post" action="/projets/{{ code }}/corriger">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="demande">Ou demander une correction à l'IA <span class="aide">(ex. « ajoute un cas limite sur la longueur du code postal », « réponse à Q-004 : 2 secondes par page »)</span></label>
+    <textarea id="demande" name="demande" maxlength="4000" required></textarea>
+    <div class="actions"><button type="submit" class="secondaire" {% if active %}disabled{% endif %}>Envoyer la demande</button></div>
+  </form>
+  <h3>Valider</h3>
+  {% if validateur %}
+  <p>Valider, c'est approuver cette version : elle passe dans les fichiers validés et devient la base de Squash, des specs et du cahier de tests.</p>
+  <div class="actions">{{ bouton_form('/projets/' ~ code ~ '/valider', 'Valider cette version', '', "Valider la version " ~ av.version ~ " ? Elle ne sera plus modifiable sans la remettre en relecture.", active) }}</div>
+  {% else %}<p class="discret">La validation est réservée au responsable du projet.</p>{% endif %}
+  {% elif va %}
+  <p><span class="etiquette ok">Version {{ va.version }} validée</span> <span class="discret">{{ va.exigences }} exigences, {{ va.cas }} cas.</span></p>
+  <div class="actions">
+    <a class="bouton secondaire" href="/projets/{{ code }}/cas/valide">Relire en ligne</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/telecharger/03-valide/cas-de-tests.xlsx">Excel</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/telecharger/03-valide/cas-de-tests.docx">Word</a>
+    <a class="bouton secondaire" href="/projets/{{ code }}/lire/03-valide/ambiguites.md">Questions au client</a>
+    {% if validateur %}{{ bouton_form('/projets/' ~ code ~ '/relecture', 'Remettre en relecture', 'secondaire', "Remettre la version validée en relecture ? Les cas déjà publiés dans Squash ne seront pas modifiés par une nouvelle publication.", active) }}{% endif %}
+  </div>
+  {% else %}<p class="discret">Après l'analyse.</p>{% endif %}
+</section>
+
+<section class="carte etape {{ cls(e.publie, e.etape == 'publication') }}" id="publication">
+  <h2><span class="numero">4</span>Publication dans Squash</h2>
+  {% if not va %}<p class="discret">Après la validation.</p>
+  {% elif not sq %}<p>Renseigner l'ID du projet Squash dans la fiche du projet (le projet doit d'abord être créé dans Squash).</p>
+  {% else %}
+  {% if e.publie and not e.publie.illisible %}<p><span class="etiquette ok">Publié</span> {{ e.publie.exigences }} exigences et {{ e.publie.cas }} cas dans Squash (dernière publication : {{ e.publie.le }}).</p>{% endif %}
+  <p>La simulation lit Squash et montre ce qui sera créé, sans rien écrire. Rien n'est jamais modifié ni supprimé dans Squash ; une nouvelle publication ne crée que ce qui manque.</p>
+  {% if validateur %}
+  <div class="actions">{{ bouton_form('/projets/' ~ code ~ '/publier/simulation', 'Simuler la publication', 'secondaire', '', active) }}</div>
+  {% if simu %}
+    {% set r = simu.resultat %}
+    <h3>Résultat de la simulation (tâche n° {{ simu.id }})</h3>
+    <p>Projet Squash : <strong>{{ (r.projet or {}).nom }}</strong> (n° {{ (r.projet or {}).id }}) · <strong>{{ r.resume.creer }}</strong> élément(s) à créer · {{ r.resume.existe }} déjà présent(s) · {{ r.resume.recreer }} à recréer.</p>
+    {% if r.resume.creer + r.resume.recreer > 0 %}
+    <div class="actions">
+      <form class="en-ligne" method="post" action="/projets/{{ code }}/publier" data-confirmer="Créer {{ r.resume.creer + r.resume.recreer }} élément(s) dans le projet Squash « {{ (r.projet or {}).nom }} » ? Durée estimée : environ {{ ((r.resume.creer + r.resume.recreer) * 15 / 60)|round(0, 'ceil')|int }} min.">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="simulation" value="{{ simu.id }}">
+        <button type="submit" {% if active %}disabled{% endif %}>Publier dans Squash</button>
+      </form>
+    </div>
+    {% else %}<p class="discret">Tout est déjà publié.</p>{% endif %}
+  {% endif %}
+  {% else %}<p class="discret">La publication est réservée au responsable du projet.</p>{% endif %}
+  {% endif %}
+</section>
+
+<section class="carte etape {{ cls(e.specs, e.etape == 'specs') }}" id="specs">
+  <h2><span class="numero">5</span>Specs d'automatisation</h2>
+  {% if not va %}<p class="discret">Après la validation.</p>
+  {% else %}
+  <p>Une spec par fonctionnalité, au statut BROUILLON tant que l'application n'a pas été explorée.</p>
+  {% if e.specs %}<ul class="liste-fichiers">{% for s in e.specs %}<li><a href="/projets/{{ code }}/telecharger/04-livrables/specs/{{ s }}">{{ s }}</a></li>{% endfor %}</ul>{% endif %}
+  <div class="actions">{{ bouton_form('/projets/' ~ code ~ '/specs', 'Régénérer les specs' if e.specs else 'Générer les specs', 'secondaire', '', active) }}</div>
+  {% endif %}
+</section>
+
+<section class="carte etape">
+  <h2><span class="numero">6</span>Temps B : exploration, recette, cahier de tests, manuel</h2>
+  <p class="discret">Disponible dans une prochaine version de l'outil (phase 5). En attendant, ces étapes se font avec qa-factory sur un poste.</p>
+</section>
+
+</div>
+<aside>
+  <section class="carte" id="fiche">
+    <h2>Fiche du projet</h2>
+    {% if validateur %}
+    <form method="post" action="/projets/{{ code }}/fiche">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Nom</label><input type="text" name="nom" value="{{ fiche.nom }}">
+      <label>Client</label><input type="text" name="client" value="{{ fiche.client }}">
+      <label>Adresse du site <span class="aide">(temps B)</span></label><input type="url" name="url" value="{{ app_.url or '' }}" placeholder="https://">
+      <label>Environnement</label><input type="text" name="environnement" value="{{ app_.environnement or '' }}">
+      <label>Actions autorisées sur le site</label><textarea name="actions_autorisees" style="min-height:60px">{{ app_.actions_autorisees or '' }}</textarea>
+      <label>ID du projet Squash</label><input type="text" name="squash_id" inputmode="numeric" value="{{ sq or '' }}">
+      {% if u.role == 'admin' %}
+      <label>Responsable</label>
+      <select name="responsable_id"><option value="0">— inchangé —</option>{% for r in responsables %}<option value="{{ r.id }}" {% if pdb and pdb.responsable_id == r.id %}selected{% endif %}>{{ r.nom }}</option>{% endfor %}</select>
+      {% endif %}
+      <div class="actions"><button type="submit" class="secondaire">Enregistrer</button></div>
+    </form>
+    {% else %}
+    <p class="discret">Client : {{ fiche.client }}<br>Environnement : {{ app_.environnement }}<br>Actions autorisées : {{ app_.actions_autorisees }}</p>
+    {% endif %}
+  </section>
+  <section class="carte">
+    <h2>Tâches récentes</h2>
+    {% if taches %}<ul class="liste-fichiers">{% for t in taches %}<li><a href="/taches/{{ t.id }}">n° {{ t.id }} · {{ TYPES[t.type] }}</a><span class="etiquette {{ 'ok' if t.statut == 'termine' else ('erreur' if t.statut in ('echec', 'interrompue') else 'accent') }}">{{ STATUTS[t.statut] }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="discret">Aucune.</p>{% endif %}
+  </section>
+  <section class="carte">
+    <h2>Journal du projet</h2>
+    {% if journal %}<ul class="liste-fichiers" style="font-size:.85rem">{% for j in journal %}<li><span><strong>{{ j.commande }}</strong> — {{ j.resultat }}</span><span class="discret">{{ j.date }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="discret">Vide.</p>{% endif %}
+  </section>
+</aside>
+</div>
+{% endblock %}

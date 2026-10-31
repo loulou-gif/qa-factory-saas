@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titre %}Tâche {{ t.id }} — QA Factory{% endblock %}
+{% block contenu %}
+<p class="discret"><a href="/">Projets</a> / <a href="/projets/{{ t.projet }}">{{ fiche.nom or t.projet }}</a> / tâche n° {{ t.id }}</p>
+<h1>{{ TYPES[t.type] }}</h1>
+<p class="sous-titre">Demandée par {{ t.auteur or '—' }} le {{ t.cree_le[:16].replace('T', ' à ') }}{% if t.parametres.demande %} : « {{ t.parametres.demande }} »{% endif %}</p>
+<div id="etat" data-actif="{{ 1 if t.statut in actifs else 0 }}" data-url="/taches/{{ t.id }}/etat">
+{% include "_tache_etat.html" %}
+</div>
+<p><a class="bouton secondaire" href="/projets/{{ t.projet }}">Retour au projet</a></p>
+{% endblock %}
+{% block script %}
+<script>
+(function () {
+  var zone = document.getElementById('etat');
+  if (zone.getAttribute('data-actif') !== '1') return;
+  function suivre() {
+    var actif = document.activeElement;
+    if (actif && zone.contains(actif) && /INPUT|TEXTAREA|SELECT/.test(actif.tagName)) { return setTimeout(suivre, 3000); }
+    fetch(zone.getAttribute('data-url'), {credentials: 'same-origin'}).then(function (r) { return r.text(); }).then(function (h) {
+      var tmp = document.createElement('div'); tmp.innerHTML = h;
+      var neuf = tmp.querySelector('[data-fragment]');
+      if (!neuf) { return setTimeout(suivre, 3000); }
+      zone.innerHTML = neuf.outerHTML;
+      if (neuf.getAttribute('data-actif') === '1') { setTimeout(suivre, 2500); } else { window.location.reload(); }
+    }).catch(function () { setTimeout(suivre, 5000); });
+  }
+  setTimeout(suivre, 2500);
+})();
+</script>
+{% endblock %}

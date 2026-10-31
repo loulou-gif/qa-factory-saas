@@ -10,3 +10,7 @@ __pycache__/
 # Pour versionner un projet malgré tout : ajouter une ligne « !projets/<nom>/ » ci-dessous.
 projets/*
 !projets/saucedemo/
+
+# QA Factory SaaS
+saas/donnees/
+saas/.env

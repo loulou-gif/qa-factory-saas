@@ -1,0 +1,25 @@
+#!/bin/sh
+# Démarrage d'un conteneur QA Factory SaaS : « moteur » (OpenCode) ou « web » (application).
+set -e
+cd "${QAF_RACINE:-/srv/qa-factory}"
+case "$1" in
+  moteur)
+    : "${OPENCODE_SERVER_PASSWORD:?OPENCODE_SERVER_PASSWORD obligatoire}"
+    : "${QAF_MODELE:?QAF_MODELE obligatoire (ex. openrouter/<fournisseur>/<modèle>)}"
+    OPENCODE_CONFIG_CONTENT="$(python3 saas/config_moteur.py)"
+    export OPENCODE_CONFIG_CONTENT
+    if [ "${QAF_MODELE#simulation/}" != "$QAF_MODELE" ]; then
+      export QAF_FAUX_MODELE_URL="${QAF_FAUX_MODELE_URL:-http://127.0.0.1:4010/v1}"
+      python3 saas/dev/faux_modele.py 4010 &
+    fi
+    exec opencode serve --hostname 0.0.0.0 --port 4096
+    ;;
+  web)
+    : "${QAF_SECRET:?QAF_SECRET obligatoire (chaîne aléatoire longue)}"
+    exec python3 -m uvicorn app.main:app --app-dir saas --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
+    ;;
+  *)
+    echo "Usage : demarrer.sh moteur|web" >&2
+    exit 2
+    ;;
+esac

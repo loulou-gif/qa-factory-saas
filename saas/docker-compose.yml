@@ -1,0 +1,42 @@
+# QA Factory SaaS : deux conteneurs construits depuis la même image.
+#   moteur : OpenCode en mode serveur (réseau interne uniquement, protégé par mot de passe)
+#   web    : l'application, seule exposée (port 8000, à placer derrière le HTTPS de l'entreprise)
+# Démarrage : copier .env.exemple en .env, le remplir, puis : docker compose up -d --build
+name: qa-factory
+
+services:
+  moteur:
+    build:
+      context: ..
+      dockerfile: saas/Dockerfile
+      additional_contexts:
+        squash_mcp: ${SQUASH_MCP_SRC:-../../squash-tm-mcp}
+    image: qa-factory-saas:local
+    command: ["saas/demarrer.sh", "moteur"]
+    env_file: .env
+    volumes:
+      - projets:/srv/qa-factory/projets
+      - opencode-donnees:/home/qaf/.local/share/opencode
+      - opencode-cache:/home/qaf/.cache/opencode
+    restart: unless-stopped
+
+  web:
+    image: qa-factory-saas:local
+    command: ["saas/demarrer.sh", "web"]
+    env_file: .env
+    environment:
+      OPENCODE_URL: http://moteur:4096
+    volumes:
+      - projets:/srv/qa-factory/projets
+      - donnees:/srv/donnees
+    ports:
+      - "${QAF_PORT:-8000}:8000"
+    depends_on:
+      - moteur
+    restart: unless-stopped
+
+volumes:
+  projets:
+  donnees:
+  opencode-donnees:
+  opencode-cache:

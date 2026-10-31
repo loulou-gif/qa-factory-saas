@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titre %}Nouveau projet — QA Factory{% endblock %}
+{% block contenu %}
+<div class="carte" style="max-width:640px">
+  <h1>Nouveau projet</h1>
+  <p class="sous-titre">Seuls le code et le nom sont obligatoires : l'adresse du site et l'ID Squash peuvent être ajoutés plus tard.</p>
+  <form method="post" action="/projets/nouveau">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="code">Code <span class="aide">(minuscules, chiffres et tirets, ex. orange-efacture ; ne change plus ensuite)</span></label>
+    <input type="text" id="code" name="code" required pattern="[a-z0-9][a-z0-9-]{1,48}" autofocus>
+    <label for="nom">Nom lisible <span class="aide">(ex. Orange eFacture)</span></label>
+    <input type="text" id="nom" name="nom" required>
+    <label for="url">Adresse du site à tester <span class="aide">(vide si le site est encore en développement)</span></label>
+    <input type="url" id="url" name="url" placeholder="https://">
+    <label for="squash">ID du projet dans Squash <span class="aide">(vide s'il n'est pas encore créé dans Squash)</span></label>
+    <input type="text" id="squash" name="squash_id" inputmode="numeric">
+    <label for="resp">Responsable du projet <span class="aide">(celui qui valide et publie)</span></label>
+    <select id="resp" name="responsable_id">
+      {% for r in responsables %}<option value="{{ r.id }}" {% if r.id == u.id %}selected{% endif %}>{{ r.nom }}</option>{% endfor %}
+    </select>
+    <div class="actions"><button type="submit">Créer le projet</button><a class="bouton secondaire" href="/">Annuler</a></div>
+  </form>
+</div>
+{% endblock %}

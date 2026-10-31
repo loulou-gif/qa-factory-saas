@@ -1,0 +1,79 @@
+<div data-fragment data-actif="{{ 1 if t.statut in actifs else 0 }}">
+{% set r = t.resultat or {} %}
+<div class="carte">
+  <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
+    <div>
+      <span class="etiquette {{ 'ok' if t.statut == 'termine' else ('erreur' if t.statut in ('echec', 'interrompue', 'annule') else ('alerte' if t.statut == 'attente_confirmation' else 'accent')) }}">{{ STATUTS[t.statut] }}</span>
+      {% if t.debut %}<span class="discret">démarrée à {{ t.debut[11:16] }}{% if t.fin %}, finie à {{ t.fin[11:16] }}{% endif %}</span>{% endif %}
+      {% if r.cout_usd is defined and r.cout_usd %}<span class="discret"> · coût IA : {{ '%.2f'|format(r.cout_usd) }} USD · {{ '{:,}'.format(r.jetons.entree).replace(',', ' ') }} jetons lus, {{ '{:,}'.format(r.jetons.sortie).replace(',', ' ') }} écrits</span>{% endif %}
+    </div>
+    {% if t.statut in actifs %}
+    <form class="en-ligne" method="post" action="/taches/{{ t.id }}/arreter" data-confirmer="Arrêter cette tâche ? Le travail en cours sera interrompu.">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="danger">Arrêter</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% for a in t.attente or [] %}
+<div class="attente">
+  {% if a.genre == 'permission' %}
+  <strong>L'agent demande une autorisation</strong>
+  <p>Action : <code>{{ a.permission }}</code></p>
+  <pre>{{ a.detail }}</pre>
+  <p class="discret">Autoriser seulement si l'action est utile à la tâche et sans danger. Les suppressions et les écritures dans Squash sont toujours interdites à l'agent.</p>
+  <div class="actions">
+    <form class="en-ligne" method="post" action="/taches/{{ t.id }}/permission"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="demande" value="{{ a.id }}"><input type="hidden" name="decision" value="accepter"><button type="submit">Autoriser une fois</button></form>
+    <form class="en-ligne" method="post" action="/taches/{{ t.id }}/permission"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="demande" value="{{ a.id }}"><input type="hidden" name="decision" value="refuser"><button type="submit" class="secondaire">Refuser</button></form>
+  </div>
+  {% else %}
+  <strong>L'agent pose une question</strong>
+  <form method="post" action="/taches/{{ t.id }}/question">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="demande" value="{{ a.id }}">
+    {% for q in a.questions %}{% set i = loop.index0 %}
+    <p><strong>{{ q.header }}</strong> — {{ q.question }}</p>
+    {% for o in q.options %}
+    <label style="font-weight:400"><input type="{{ 'checkbox' if q.multiple else 'radio' }}" name="q{{ i }}" value="{{ o.label }}"> {{ o.label }} <span class="discret">{{ o.description }}</span></label>
+    {% endfor %}
+    <label style="font-weight:400">Autre réponse : <input type="text" name="libre{{ i }}"></label>
+    {% endfor %}
+    <div class="actions"><button type="submit" name="decision" value="repondre">Répondre</button><button type="submit" name="decision" value="ignorer" class="secondaire">Ne pas répondre</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if t.type in ('analyser', 'corriger') %}
+  {% if r.compte_rendu and t.statut not in actifs %}
+  <div class="carte"><h2>Compte rendu de l'agent</h2><div style="white-space:pre-wrap">{{ r.compte_rendu }}</div></div>
+  {% endif %}
+  {% if r.controle %}
+  <div class="carte"><h2>Contrôle</h2>
+    <p><span class="etiquette {{ 'ok' if r.controle.ok else 'erreur' }}">{{ r.controle.erreurs|length }} erreur(s)</span> <span class="etiquette {{ 'alerte' if r.controle.avertissements else 'ok' }}">{{ r.controle.avertissements|length }} avertissement(s)</span></p>
+    {% if r.controle.erreurs or r.controle.avertissements %}<ul>{% for x in r.controle.erreurs %}<li><strong>Erreur :</strong> {{ x }}</li>{% endfor %}{% for x in r.controle.avertissements %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endif %}
+  <div class="carte"><h2>Étapes de l'agent</h2>
+    {% if r.etapes %}<ul class="etapes-ia">{% for s in r.etapes %}<li><span class="outil">{{ s.outil }}</span><span>{{ s.quoi }}</span><span class="discret">{{ {'completed': 'fait', 'running': 'en cours', 'pending': 'en attente', 'error': 'erreur'}.get(s.statut, s.statut) }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="discret">{{ 'Démarrage…' if t.statut in actifs else 'Aucune.' }}</p>{% endif %}
+    {% if r.compte_rendu and t.statut in actifs %}<p class="discret" style="white-space:pre-wrap">{{ r.compte_rendu[-600:] }}</p>{% endif %}
+  </div>
+{% elif t.type in ('publier-simulation', 'publier') and r.plan is defined %}
+  <div class="carte"><h2>{{ 'Publication' if t.type == 'publier' else 'Simulation' }}</h2>
+    <p>Projet Squash : <strong>{{ (r.projet or {}).nom }}</strong> (n° {{ (r.projet or {}).id }})</p>
+    {% if r.resume %}<p>{{ r.resume.creer }} à créer · {{ r.resume.existe }} déjà présent(s) · {{ r.resume.recreer }} à recréer{% if t.type == 'publier' %} · <strong>{{ (r.crees or [])|length }} créé(s)</strong>{% endif %}</p>{% endif %}
+    {% if r.erreurs %}<div class="flash erreur">{{ r.erreurs|join('\n') }}</div>{% endif %}
+    {% if (r.validation or {}).avertissements %}<p class="discret">Avertissements : {{ r.validation.avertissements|join(' ; ') }}</p>{% endif %}
+    <details><summary>Détail du plan ({{ r.plan|length }} lignes)</summary>
+      <div class="tableau-defilant"><table><thead><tr><th>Élément</th><th>Type</th><th>Action</th><th>ID Squash</th></tr></thead><tbody>
+      {% for l in r.plan %}<tr><td>{{ l.id }}</td><td>{{ l.type }}</td><td>{{ {'creer': 'à créer', 'existe': 'déjà présent', 'recreer': 'à recréer'}.get(l.action, l.action) }}</td><td>{{ l.squash_id or '' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </details>
+    {% if t.type == 'publier-simulation' and t.statut == 'termine' %}<p><a class="bouton" href="/projets/{{ t.projet }}#publication">Revenir au projet pour publier</a></p>{% endif %}
+  </div>
+{% endif %}
+
+<div class="carte"><h2>Journal de la tâche</h2>
+  <ul class="liste-fichiers" style="font-size:.88rem">{% for j in t.journal %}<li><span>{{ j.m }}</span><span class="discret">{{ j.t }}</span></li>{% endfor %}</ul>
+</div>
+</div>

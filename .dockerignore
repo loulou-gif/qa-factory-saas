@@ -1,0 +1,7 @@
+.git
+**/__pycache__
+saas/donnees
+saas/.env
+**/node_modules
+projets/*
+!projets/saucedemo

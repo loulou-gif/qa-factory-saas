@@ -1,5 +1,7 @@
 # QA Factory
 
+> **Dépôt `qa-factory-saas`** : en plus de l'usage sur poste décrit ci-dessous, ce dépôt contient la version serveur (application web interne) dans `saas/`. Installation, exploitation et état d'avancement : `saas/README.md`.
+
 Chaîne de production des livrables de test, pilotée par un agent IA (**Claude Code** ou **OpenCode**) relié à Squash TM et à un navigateur :
 
 **cahier des charges → cas de tests + questions + jeux de données → relecture et validation → Squash TM + specs d'automatisation → (plateforme disponible) → exploration → en parallèle : tests Playwright, cahier de tests, manuel utilisateur.**
