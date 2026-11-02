@@ -44,6 +44,19 @@ PORTS = {"modele": int(os.environ.get("QAF_PORT_MODELE", "4110")), "moteur": int
          "web": int(os.environ.get("QAF_PORT", "8000"))}
 
 
+def arreter(proc_ou_pid):
+    """Arrête un processus et ses enfants. Sous Windows, opencode.CMD lance node : sans /T, node survit
+    et garde le port occupé."""
+    pid = proc_ou_pid if isinstance(proc_ou_pid, int) else proc_ou_pid.pid
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    else:
+        try:
+            os.kill(pid, signal.SIGINT)
+        except OSError:
+            pass
+
+
 def libre(port):
     with socket.socket() as s:
         return s.connect_ex(("127.0.0.1", port)) != 0
@@ -94,6 +107,13 @@ def main():
                  "  python saas/dev/demo.py --simulation                                 (sans IA)")
     if modele.startswith("openrouter/") and not os.environ.get("OPENROUTER_API_KEY"):
         sys.exit("Clé OpenRouter absente : définir la variable OPENROUTER_API_KEY (voir saas/README.md), puis relancer.")
+    fichier_pid = SAAS / "donnees-demo" / "demo.pid"
+    if fichier_pid.exists():  # processus restés actifs après une démo précédente (fenêtre fermée…) : on les arrête
+        for ligne in fichier_pid.read_text().split():
+            if ligne.isdigit():
+                arreter(int(ligne))
+        time.sleep(1)
+        fichier_pid.unlink(missing_ok=True)
     for nom, port in PORTS.items():
         if nom == "modele" and modele != "simulation/demo":
             continue
@@ -130,6 +150,7 @@ def main():
         moteur_proc = subprocess.Popen([opencode, "serve", "--hostname", "127.0.0.1", "--port", str(PORTS["moteur"])],
                                        cwd=RACINE, env=env, stdout=sortie, stderr=subprocess.STDOUT)
         procs.append(moteur_proc)
+        fichier_pid.write_text("\n".join(str(x.pid) for x in procs))
         print(f"Démarrage du moteur OpenCode ({opencode}, port {PORTS['moteur']})...")
         url_moteur = f"http://127.0.0.1:{PORTS['moteur']}/session/status"
         fin = time.time() + 120
@@ -149,6 +170,7 @@ def main():
                      f"--- Messages d'OpenCode ({journal}) ---\n{texte[-3000:] or '(aucun message)'}\n---")
         procs.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", str(SAAS),
                                        "--host", "127.0.0.1", "--port", str(PORTS["web"])], cwd=RACINE, env=env))
+        fichier_pid.write_text("\n".join(str(x.pid) for x in procs))
         url = f"http://127.0.0.1:{PORTS['web']}"
         if not attendre(url + "/sante"):
             sys.exit("L'application n'a pas démarré.")
@@ -161,13 +183,14 @@ def main():
         pass
     finally:
         for p in reversed(procs):
-            if p.poll() is None:
-                p.send_signal(signal.SIGINT) if os.name != "nt" else p.terminate()
+            if p.poll() is None or os.name == "nt":
+                arreter(p)
         for p in procs:
             try:
                 p.wait(10)
             except subprocess.TimeoutExpired:
                 p.kill()
+        fichier_pid.unlink(missing_ok=True)
         print("Démonstration arrêtée.")
 
 

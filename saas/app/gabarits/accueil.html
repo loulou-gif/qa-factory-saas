@@ -2,7 +2,7 @@
 {% block titre %}QA Factory{% endblock %}
 {% block contenu %}
 <div class="accueil">
-  {% if not moteur_ok %}<div class="message erreur">L'assistant d'analyse est indisponible pour le moment. Prévenez l'administrateur de l'outil.</div>{% endif %}
+  {% if not moteur_ok %}<div class="message erreur">L'assistant d'analyse est indisponible pour le moment. Prévenez l'administrateur de l'outil.{% if u.role == 'admin' %}<br><span class="discret">Cause : {{ moteur_detail }}</span>{% endif %}</div>{% endif %}
   <div class="depot" id="depot" tabindex="0" role="button" aria-label="Déposer le cahier des charges"
        data-extensions="{{ extensions }}" {% if not moteur_ok %}aria-disabled="true"{% endif %}>
     <div class="remplissage" aria-hidden="true"></div>

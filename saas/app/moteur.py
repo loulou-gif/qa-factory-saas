@@ -60,13 +60,15 @@ class Moteur:
 
     def disponible(self) -> tuple:
         try:
-            r = self.client.get("/session/status")
-            if r.status_code == 401:
-                return False, "mot de passe du moteur refusé (OPENCODE_SERVER_PASSWORD)"
-            r.raise_for_status()
-            return True, ""
+            # Le premier appel prépare le dossier de travail d'OpenCode : il peut prendre plusieurs secondes.
+            r = self.client.get("/session/status", timeout=60)
         except httpx.HTTPError as e:
-            return False, f"moteur OpenCode injoignable ({reglages.opencode_url}) : {e.__class__.__name__}"
+            return False, f"moteur OpenCode injoignable ({reglages.opencode_url}) : {e.__class__.__name__} {e}".strip()
+        if r.status_code == 401:
+            return False, "mot de passe du moteur refusé (OPENCODE_SERVER_PASSWORD)"
+        if r.status_code >= 400:
+            return False, f"le moteur OpenCode répond HTTP {r.status_code} : {r.text[:300]}"
+        return True, ""
 
     # ---------------------------------------------------------------- exécution
 
