@@ -38,7 +38,9 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[2]
 SAAS = RACINE / "saas"
-PORTS = {"modele": 4010, "moteur": 4096, "web": int(os.environ.get("QAF_PORT", "8000"))}
+# Le moteur n'utilise pas 4096 : c'est le port par défaut d'OpenCode, souvent déjà pris par OpenCode lui-même.
+PORTS = {"modele": int(os.environ.get("QAF_PORT_MODELE", "4110")), "moteur": int(os.environ.get("QAF_PORT_MOTEUR", "4196")),
+         "web": int(os.environ.get("QAF_PORT", "8000"))}
 
 
 def libre(port):
@@ -79,7 +81,9 @@ def main():
         if nom == "modele" and modele != "simulation/demo":
             continue
         if not libre(port):
-            sys.exit(f"Le port {port} ({nom}) est déjà utilisé : fermer l'autre programme ou une démo déjà lancée.")
+            variable = {"web": "QAF_PORT", "moteur": "QAF_PORT_MOTEUR", "modele": "QAF_PORT_MODELE"}[nom]
+            sys.exit(f"Le port {port} ({nom}) est déjà utilisé : arrêter la démo déjà lancée (Ctrl+C), "
+                     f"ou choisir un autre port, ex. {variable}={port + 1} python saas/dev/demo.py ...")
     opencode = shutil.which("opencode")
     if not opencode:
         sys.exit("OpenCode introuvable : npm install -g opencode-ai")
