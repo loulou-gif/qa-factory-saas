@@ -140,9 +140,9 @@ def test_parcours_temps_a(env):
     d = r.json()
     code, tid = d["projet"], d["tache"]
     assert code == "cahier-des-charges-boutique" and d["nom"] == "Cahier des charges Boutique"
+    # Aucune demande d'accord n'est présentée au testeur : les commandes utiles sont autorisées d'avance
     vu = attendre(lambda: (lambda x: x if x["attente"] or not x["actif"] else None)(c.get(f"/taches/{tid}/progression").json()), 120)
-    assert vu["attente"] and vu["message"] == "L'assistant attend votre accord", vu
-    assert 0 < vu["pourcentage"] < 100
+    assert not vu["attente"], vu
     fin = suivre(c, tid)
     assert fin["statut"] == "termine" and fin["pourcentage"] == 100 and fin["message"] == "Génération terminée", fin
 

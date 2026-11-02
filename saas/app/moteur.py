@@ -144,7 +144,7 @@ class Moteur:
                     etapes.append({"outil": p.get("tool"), "quoi": str(quoi)[:240], "statut": st.get("status", "")})
                 elif p.get("type") == "text" and (p.get("text") or "").strip():
                     textes.append(p["text"].strip())
-        attente = self._en_attente(sid)
+        attente = self._traiter_automatiquement(base, tid, self._en_attente(sid))
         bilan = {"etapes": etapes[-200:], "compte_rendu": textes[-1] if textes else "", "cout_usd": round(cout, 4),
                  "jetons": jetons, "messages": len(msgs)}
         t = base.tache(tid)
@@ -153,6 +153,23 @@ class Moteur:
             statut = "attente_confirmation" if attente else "en_cours"
         base.maj_tache(tid, resultat=bilan, attente=attente or None, statut=statut)
         return bilan
+
+    def _traiter_automatiquement(self, base, tid, attente) -> list:
+        """Aucune demande n'est présentée au testeur : sur le serveur, ce qui est utile à l'analyse est
+        autorisé d'avance (opencode.serveur.json) et le reste est refusé. Une demande qui arriverait
+        quand même est refusée ici, l'agent continue sans, et le refus est noté dans le journal."""
+        for a in attente or []:
+            try:
+                if a["genre"] == "permission":
+                    self.repondre_permission(a["id"], False, "Action non autorisée sur le serveur : continuer sans elle. "
+                                             "Les ambiguïtés vont dans ambiguites.md, pas en question.")
+                    base.ajouter_journal(tid, f"Action refusée automatiquement : {a.get('permission')} {a.get('detail') or ''}".strip())
+                else:
+                    self.rejeter_question(a["id"])
+                    base.ajouter_journal(tid, "Question de l'assistant ignorée : elle doit figurer dans ambiguites.md.")
+            except Exception:  # noqa: BLE001
+                pass
+        return []
 
     def _en_attente(self, sid) -> list:
         res = []

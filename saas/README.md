@@ -9,7 +9,7 @@ Application web interne : les testeurs utilisent QA Factory depuis un navigateur
 Un parcours en quatre écrans, sans formation (règles de conception : skill `interface-qa-factory`, couleurs de Synelia) :
 
 1. **Accueil** : un seul rectangle de dépôt. Déposer le cahier des charges (un ou plusieurs fichiers : pdf, docx, doc, odt, md, txt, xlsx, png, jpg) **lance directement l'analyse** ; le projet prend le nom du fichier.
-2. **Génération** : le rectangle se remplit jusqu'à 100 %, affiche « Génération terminée » puis ouvre les fichiers produits. Si l'assistant a besoin d'un accord pour une action, une fenêtre le demande (Autoriser / Refuser).
+2. **Génération** : le rectangle se remplit jusqu'à 100 %, affiche « Génération terminée » puis ouvre les fichiers produits. Aucune demande d'accord n'est présentée : tout se déroule en arrière-plan.
 3. **Fichiers produits** : cas de tests, questions pour le client, jeux de données, chacun résumé en une ligne ; Excel et Word en téléchargement.
 4. **Relecture** : les cas, groupés par fonctionnalité en onglets, se lisent replié (une ligne par cas) et se modifient sur place (titre, prérequis, étapes « Je fais » / « Je dois voir »). **« Enregistrer » enregistre et valide** : la version passe dans `03-valide`, les specs d'automatisation sont générées. Il n'y a plus d'étape de validation par un responsable. « Modifier à nouveau les cas » rouvre la relecture si besoin.
 
@@ -17,7 +17,7 @@ Puis **Envoyer dans Squash** : le numéro du projet Squash est demandé la premi
 
 Garde-fous propres à la version serveur :
 - l'agent IA n'a **aucun** accès à Squash (le MCP squash-tm est désactivé pour lui), ni au web, ni hors du dépôt ; l'envoi dans Squash passe uniquement par le bouton, avec le code de publication du MCP ;
-- toute commande système non prévue demande un accord dans la page, avec le nom de la personne qui l'a donné ;
+- aucune demande d'accord technique n'est posée au testeur : les commandes utiles à l'analyse (scripts Python du dépôt, création de dossiers, lecture et conversion de documents) sont autorisées d'avance ; tout le reste (suppression, déplacement, réseau, installation, lecture des variables d'environnement) est refusé automatiquement, l'assistant continue sans, et le refus est noté dans le journal de la tâche. Liste dans `opencode.serveur.json` ;
 - une seule tâche à la fois par projet ; le coût OpenRouter de chaque analyse est enregistré ;
 - « Enregistrer » refuse de valider si le contrôle ISTQB signale des erreurs ;
 - comptes nominatifs, mots de passe hachés, mot de passe provisoire à changer, protection CSRF, journal d'audit (qui a validé, qui a envoyé dans Squash).
