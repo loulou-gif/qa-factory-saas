@@ -114,28 +114,57 @@
   function depot(zone) {
     if (!zone || zone.getAttribute('aria-disabled') === 'true') return;
     var choix = document.getElementById('choix'), phrase = zone.querySelector('.phrase'), aide = zone.querySelector('.aide');
-    var exts = zone.getAttribute('data-extensions').split(','), occupe = false;
+    var panier = document.getElementById('panier'), listeEl = panier.querySelector('ul'), lancer = document.getElementById('lancer');
+    var exts = zone.getAttribute('data-extensions').split(','), occupe = false, selection = [];
     var texteInitial = [phrase.textContent, aide.textContent];
-    function reinitialiser() {
-      occupe = false; zone.className = 'depot'; zone.querySelector('.remplissage').style.width = '0';
-      zone.setAttribute('data-affiche', '0'); phrase.textContent = texteInitial[0]; aide.textContent = texteInitial[1];
+    function taille(o) { return o < 1048576 ? Math.max(1, Math.round(o / 1024)) + ' Ko' : (o / 1048576).toFixed(1).replace('.', ',') + ' Mo'; }
+    function afficherPanier() {
+      listeEl.innerHTML = '';
+      selection.forEach(function (f, i) {
+        var croix = el('button', { type: 'button', 'class': 'croix', 'aria-label': 'Retirer ' + f.name, texte: '\u00d7' });
+        croix.addEventListener('click', function () { selection.splice(i, 1); afficherPanier(); });
+        listeEl.appendChild(el('li', {}, [el('span', { 'class': 'nom', texte: f.name }), el('span', { 'class': 'discret', texte: taille(f.size) }), croix]));
+      });
+      panier.hidden = !selection.length;
+      if (selection.length) {
+        phrase.textContent = selection.length > 1 ? selection.length + ' documents prêts' : '1 document prêt';
+        aide.textContent = "Ajoutez d'autres fichiers en cliquant ou en les déposant ici, puis lancez l'analyse.";
+      } else {
+        phrase.textContent = texteInitial[0]; aide.textContent = texteInitial[1];
+      }
     }
-    zone.addEventListener('click', function () { if (zone.classList.contains('echec')) return reinitialiser(); if (!occupe) choix.click(); });
+    function reinitialiser() {
+      occupe = false; selection = []; zone.className = 'depot'; zone.querySelector('.remplissage').style.width = '0';
+      zone.setAttribute('data-affiche', '0'); afficherPanier();
+    }
+    function ajouter(fichiers) {
+      if (occupe) return;
+      if (zone.classList.contains('echec')) reinitialiser();
+      var liste = Array.prototype.slice.call(fichiers);
+      var refus = liste.filter(function (f) { return exts.indexOf(f.name.split('.').pop().toLowerCase()) < 0; });
+      if (refus.length) { erreur(refus[0].name + ' : format non accepté.'); occupe = false; return; }
+      liste.forEach(function (f) {
+        if (!selection.some(function (s) { return s.name === f.name && s.size === f.size; })) selection.push(f);
+      });
+      afficherPanier();
+      lancer.focus();
+    }
+    zone.addEventListener('click', function () { if (!occupe) choix.click(); });
     zone.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && !occupe) { e.preventDefault(); choix.click(); } });
     ['dragenter', 'dragover'].forEach(function (t) { zone.addEventListener(t, function (e) { e.preventDefault(); if (!occupe) zone.classList.add('survol'); }); });
     ['dragleave', 'drop'].forEach(function (t) { zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.remove('survol'); }); });
-    zone.addEventListener('drop', function (e) { if (!occupe) envoyer(e.dataTransfer.files); });
-    choix.addEventListener('change', function () { if (choix.files.length) envoyer(choix.files); choix.value = ''; });
+    zone.addEventListener('drop', function (e) { ajouter(e.dataTransfer.files); });
+    choix.addEventListener('change', function () { if (choix.files.length) ajouter(choix.files); choix.value = ''; });
+    lancer.addEventListener('click', function () { if (!occupe && selection.length) envoyer(selection); });
 
     function erreur(m) {
       zone.classList.remove('travail'); zone.classList.add('echec');
-      phrase.textContent = 'Envoi impossible'; aide.textContent = m + ' Cliquez pour recommencer.';
+      phrase.textContent = 'Analyse impossible'; aide.textContent = m + ' Cliquez pour choisir d\'autres fichiers.';
+      selection = []; panier.hidden = true;
     }
-    function envoyer(fichiers) {
-      var liste = Array.prototype.slice.call(fichiers);
-      var refus = liste.filter(function (f) { return exts.indexOf(f.name.split('.').pop().toLowerCase()) < 0; });
-      if (refus.length) { occupe = true; return erreur(refus[0].name + ' : format non accepté.'); }
+    function envoyer(liste) {
       occupe = true;
+      panier.hidden = true;
       zone.classList.add('travail');
       phrase.textContent = liste.length > 1 ? 'Envoi de ' + liste.length + ' fichiers' : 'Envoi de ' + liste[0].name;
       aide.textContent = "L'analyse démarre dès la fin de l'envoi.";
@@ -151,11 +180,11 @@
       };
       x.onload = function () {
         var d = {}; try { d = JSON.parse(x.responseText); } catch (e) { /* réponse non JSON */ }
-        if (x.status !== 200) return erreur(d.erreur || ('Erreur ' + x.status + '.'));
+        if (x.status !== 200) { occupe = false; return erreur(d.erreur || ('Erreur ' + x.status + '.')); }
         aide.textContent = 'Projet « ' + d.nom + ' ». Vous pouvez quitter cette page : la génération continue.';
         suivreTache(zone, d.tache, function () { location.href = '/projets/' + d.projet; });
       };
-      x.onerror = function () { erreur('Connexion au serveur perdue.'); };
+      x.onerror = function () { occupe = false; erreur('Connexion au serveur perdue.'); };
       x.send(donnees);
     }
   }

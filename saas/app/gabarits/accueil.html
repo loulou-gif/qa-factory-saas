@@ -12,8 +12,12 @@
     <div class="pourcentage" aria-hidden="true">0 %</div>
     <svg class="coche" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="34"/><path d="M22 37l10 10 19-21"/></svg>
     <div class="phrase" aria-live="polite">Déposez ici votre cahier des charges</div>
-    <div class="aide">ou cliquez pour le choisir. PDF, Word, Markdown ou images de maquettes ; plusieurs fichiers possibles.</div>
+    <div class="aide">ou cliquez pour le choisir. PDF, Word, Excel, texte ou images de maquettes ; plusieurs fichiers possibles.</div>
     <input type="file" id="choix" multiple accept=".{{ extensions.replace(',', ',.') }}">
+  </div>
+  <div class="panier" id="panier" hidden>
+    <ul aria-label="Documents à analyser"></ul>
+    <button class="bouton" type="button" id="lancer">Lancer l'analyse</button>
   </div>
 
   {% if recents %}

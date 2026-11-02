@@ -125,6 +125,9 @@ class Gestionnaire:
                                   "(page du projet) avant d'envoyer une demande.")
             commande, arguments = "corriger", f"{code} {demande}"
         bilan = moteur.executer(self.base, t["id"], commande, arguments)
+        if t["type"] == "analyser" and not self.base.tache(t["id"])["annulation"] \
+                and not (projets.dossier(code) / "02-a-valider" / "cas-de-tests.json").exists():
+            raise ErreurTache(analyse_sans_resultat(bilan))
         c = projets.controle(code)
         self.base.ajouter_journal(t["id"], f"Contrôle : {len(c['erreurs'])} erreur(s), {len(c['avertissements'])} avertissement(s). "
                                            f"Coût : {bilan.get('cout_usd', 0)} USD.")
@@ -186,6 +189,18 @@ class Gestionnaire:
             self.base.ajouter_journal(t["id"], l)
         if r.returncode:
             raise ErreurTache((r.stderr or r.stdout)[-400:])
+
+
+def analyse_sans_resultat(bilan: dict) -> str:
+    """Message quand l'assistant s'arrête sans avoir écrit de cas de tests."""
+    dit = " ".join((bilan.get("compte_rendu") or "").split())
+    if len(dit) > 500:
+        dit = dit[:500].rsplit(" ", 1)[0] + "…"
+    message = "L'assistant s'est arrêté sans produire de cas de tests."
+    if dit:
+        message += f" Son dernier message : « {dit} »"
+    return message + (" Si les documents sont complets, relancez l'analyse ; avec un modèle gratuit ou léger, "
+                      "ce cas est fréquent : un modèle plus puissant est recommandé.")
 
 
 gestionnaire = Gestionnaire()

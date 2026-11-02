@@ -151,6 +151,100 @@ def deposer_document(code: str, nom: str, donnees: bytes) -> str:
     return nom
 
 
+MOTS_MINIMUM = 150  # en dessous, un document ne permet pas de concevoir des cas de tests
+
+
+def lire_texte(nom: str, donnees: bytes) -> tuple:
+    """(texte, remarque) d'un document déposé. remarque explique pourquoi aucun texte n'a pu être lu."""
+    import io
+    ext = Path(nom).suffix.lower()
+    try:
+        if ext in (".md", ".txt"):
+            return donnees.decode("utf-8", errors="replace"), ""
+        if ext == ".pdf":
+            from pypdf import PdfReader
+            pdf = PdfReader(io.BytesIO(donnees))
+            if pdf.is_encrypted:
+                return "", "PDF protégé par un mot de passe"
+            texte = "\n".join((page.extract_text() or "") for page in pdf.pages)
+            return texte, "" if texte.strip() else "PDF scanné (image) : aucun texte lisible"
+        if ext == ".docx":
+            import docx
+            d = docx.Document(io.BytesIO(donnees))
+            lignes = [para.text for para in d.paragraphs]
+            for t in d.tables:
+                for ligne in t.rows:
+                    lignes.append(" | ".join(c.text for c in ligne.cells))
+            return "\n".join(lignes), ""
+        if ext == ".xlsx":
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(donnees), read_only=True, data_only=True)
+            lignes = []
+            for ws in wb.worksheets:
+                lignes.append(f"## {ws.title}")
+                for row in ws.iter_rows(values_only=True):
+                    valeurs = [str(v) for v in row if v not in (None, "")]
+                    if valeurs:
+                        lignes.append(" | ".join(valeurs))
+            return "\n".join(lignes), ""
+        if ext == ".odt":
+            import zipfile
+            xml = zipfile.ZipFile(io.BytesIO(donnees)).read("content.xml").decode("utf-8", errors="replace")
+            xml = re.sub(r"</text:(p|h)>", "\n", xml)
+            return re.sub(r"<[^>]+>", "", xml), ""
+        if ext == ".doc":
+            return "", "ancien format Word (.doc) : l'enregistrer en .docx ou en PDF"
+        if ext in (".png", ".jpg", ".jpeg"):
+            return "", "image (maquette)"
+    except Exception:  # noqa: BLE001
+        return "", "fichier illisible ou endommagé"
+    return "", "format non lu"
+
+
+def evaluer_documents(documents: list) -> tuple:
+    """documents = [(nom, octets)]. Renvoie (textes {nom: texte}, None) si le contenu suffit,
+    sinon (textes, message) expliquant pourquoi l'analyse ne peut pas produire de cas de tests."""
+    textes, remarques, mots = {}, [], 0
+    for nom, donnees in documents:
+        texte, remarque = lire_texte(nom, donnees)
+        n = len(re.findall(r"\w{2,}", texte))
+        mots += n
+        if texte.strip():
+            textes[nom] = texte
+        if remarque and remarque != "image (maquette)":
+            remarques.append(f"{nom} : {remarque}")
+        elif not remarque and n < MOTS_MINIMUM:
+            remarques.append(f"{nom} : {n} mot{'s' if n > 1 else ''} seulement")
+    if mots >= MOTS_MINIMUM:
+        return textes, None
+    if all(Path(nom).suffix.lower() in (".png", ".jpg", ".jpeg") for nom, _ in documents):
+        message = ("Les maquettes seules ne suffisent pas pour concevoir des cas de tests : "
+                   "déposez-les avec le cahier des charges (ou les User Stories) qui décrit les règles de gestion.")
+    else:
+        message = ("Pas assez de contenu exploitable pour générer des cas de tests"
+                   + (" (" + " ; ".join(remarques) + ")" if remarques else "")
+                   + ". Déposez un cahier des charges, des User Stories ou des spécifications qui décrivent "
+                     "les fonctionnalités et les règles de gestion.")
+    return textes, message
+
+
+def enregistrer_textes(code: str, textes: dict):
+    """Copie texte des documents dans 01-entrant/_texte/ : l'assistant les lit directement,
+    sans conversion (utile sous Windows et avec les modèles légers)."""
+    d = dossier(code) / "01-entrant" / "_texte"
+    d.mkdir(parents=True, exist_ok=True)
+    for nom, texte in textes.items():
+        (d / (nom_sur(nom) + ".txt")).write_text(texte, encoding="utf-8")
+
+
+def supprimer_projet_vide(code: str):
+    """Retire un projet créé à l'instant et jamais analysé (dépôt refusé)."""
+    import shutil
+    d = dossier(code)
+    if d.exists() and not etat(code)["a_valider"] and not etat(code)["valide"]:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def retirer_document(code: str, nom: str):
     e = etat(code)
     if e["a_valider"] or e["valide"]:

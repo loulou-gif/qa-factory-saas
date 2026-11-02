@@ -7,3 +7,4 @@ httpx==0.28.1
 markdown==3.11
 openpyxl==3.1.5
 python-docx==1.2.0
+pypdf==5.9.0

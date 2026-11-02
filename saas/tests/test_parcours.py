@@ -134,12 +134,25 @@ def test_parcours_temps_a(env):
 
     # Déposer, c'est lancer : projet créé depuis le nom du fichier, analyse par le vrai OpenCode
     cdc = (racine / "projets/saucedemo/01-entrant/cahier-des-charges.md").read_bytes()
-    r = c.post("/demarrer", files=[("fichiers", ("Cahier_des_charges_Boutique.md", cdc, "text/markdown"))],
+    # Contenu insuffisant : refusé avant tout appel à l'IA, sans créer de projet
+    r = c.post("/demarrer", files=[("fichiers", ("note.md", b"# Projet\nA faire plus tard.", "text/markdown"))],
+               headers={"X-CSRF": csrf(c), "Accept": "application/json"})
+    assert r.status_code == 422 and "Pas assez de contenu exploitable" in r.json()["erreur"] and "mots seulement" in r.json()["erreur"]
+    r = c.post("/demarrer", files=[("fichiers", ("ecran.png", b"\x89PNG", "image/png"))],
+               headers={"X-CSRF": csrf(c), "Accept": "application/json"})
+    assert r.status_code == 422 and "maquettes seules" in r.json()["erreur"]
+    assert not (racine / "projets/note").exists() and not (racine / "projets/ecran").exists()
+
+    # Plusieurs documents d'un coup : le cahier des charges et une maquette
+    r = c.post("/demarrer", files=[("fichiers", ("Cahier_des_charges_Boutique.md", cdc, "text/markdown")),
+                                   ("fichiers", ("maquette.png", b"\x89PNG", "image/png"))],
                headers={"X-CSRF": csrf(c), "Accept": "application/json"})
     assert r.status_code == 200, r.text
     d = r.json()
     code, tid = d["projet"], d["tache"]
     assert code == "cahier-des-charges-boutique" and d["nom"] == "Cahier des charges Boutique"
+    assert (racine / f"projets/{code}/01-entrant/maquette.png").exists()
+    assert (racine / f"projets/{code}/01-entrant/_texte/Cahier_des_charges_Boutique.md.txt").exists()
     # Aucune demande d'accord n'est présentée au testeur : les commandes utiles sont autorisées d'avance
     vu = attendre(lambda: (lambda x: x if x["attente"] or not x["actif"] else None)(c.get(f"/taches/{tid}/progression").json()), 120)
     assert not vu["attente"], vu

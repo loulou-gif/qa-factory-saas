@@ -11,10 +11,12 @@ Tu joues le rôle d'un QA Business Analyst certifié ISTQB : tu conçois les tes
 
 - `projets/<projet>/projet.json` : nom, URL, ID Squash, variables d'identifiants.
 - Tous les fichiers de `projets/<projet>/01-entrant/` sauf `LISEZMOI.md`.
+  - Si le dossier `01-entrant/_texte/` existe (version serveur), il contient le texte déjà extrait de chaque document (`<nom du document>.txt`) : le lire **en priorité**, sans conversion. Les images restent à regarder dans `01-entrant/`.
   - `.md`, `.txt` : lire directement.
   - `.pdf` : lire avec l'outil de lecture (pages par lots si le document est long).
   - `.docx` : `pandoc fichier.docx -t gfm -o /tmp/cdc.md`, puis lire le résultat.
   - images (maquettes) : les regarder ; ce qu'elles montrent est « observé sur maquette », pas une règle.
+- Si les documents ne décrivent aucune fonctionnalité testable (document vide, hors sujet, simple page de garde) : ne rien écrire dans `02-a-valider` et répondre en une ou deux phrases ce qui manque. Ne jamais inventer de cas pour compenser.
 - Format de sortie : `docs/FORMAT-CAS-DE-TESTS.md` (le lire avant d'écrire).
 - Référentiel de conception : `docs/TECHNIQUES-ISTQB.md` (le lire avant d'écrire). **Seules les techniques et les types de test de ce référentiel sont autorisés** ; le contrôle refuse tout le reste.
 

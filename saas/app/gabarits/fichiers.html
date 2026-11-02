@@ -19,7 +19,11 @@
   {% elif not a %}
     <p class="sous-titre">La génération n'a pas abouti.</p>
     <div class="message erreur">{{ ((echec.journal or [{}])[-1].m if echec else "Aucune analyse n'a été produite.")|replace('Échec : ', '') }}</div>
-    <p><a class="bouton" href="/">Déposer à nouveau le cahier des charges</a></p>
+    <form method="post" action="/projets/{{ code }}/relancer" class="actions-echec">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if e.documents %}<button class="bouton" type="submit">Relancer l'analyse</button>{% endif %}
+      <a class="{{ 'lien-bouton' if e.documents else 'bouton' }}" href="/">Déposer d'autres documents</a>
+    </form>
 
   {% else %}
     {% set n = data.cas_de_tests|length %}

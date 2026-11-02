@@ -111,6 +111,12 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--v
 .depot.echec .remplissage { width: 0 !important; }
 .coche { display: none; width: 72px; height: 72px; position: relative; z-index: 1; }
 .depot.fini .coche { display: block; }
+.panier { margin-top: 1rem; animation: entree .35s var(--douce); }
+.panier ul { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .4rem; }
+.panier li { display: flex; align-items: center; gap: .75rem; padding: .6rem .9rem; background: #fff; border: 1px solid var(--trait); border-radius: 12px; }
+.panier li .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.panier .bouton { width: 100%; justify-content: center; text-align: center; }
+.actions-echec { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
 .coche circle { fill: none; stroke: var(--succes); stroke-width: 3; stroke-dasharray: 214; stroke-dashoffset: 214; animation: trace .6s var(--douce) forwards; }
 .coche path { fill: none; stroke: var(--succes); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round;
   stroke-dasharray: 48; stroke-dashoffset: 48; animation: trace .4s .45s var(--douce) forwards; }

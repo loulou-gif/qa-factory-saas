@@ -230,6 +230,10 @@ async def demarrer(request: Request, fichiers: List[UploadFile] = File(...)):
         if os.path.splitext(f.filename)[1].lower() not in projets.EXTENSIONS_DOCUMENTS:
             raise HTTPException(400, f"{f.filename} : format non accepté. Formats acceptés : "
                                      f"{', '.join(sorted(projets.EXTENSIONS_DOCUMENTS))}.")
+    documents = [(f.filename, await f.read()) for f in fichiers]
+    textes, insuffisant = projets.evaluer_documents(documents)
+    if insuffisant:
+        raise HTTPException(422, insuffisant)
     ok, detail = moteur.disponible()
     if not ok:
         raise HTTPException(503, f"L'assistant d'analyse est indisponible ({detail}). Prévenez l'administrateur.")
@@ -237,9 +241,11 @@ async def demarrer(request: Request, fichiers: List[UploadFile] = File(...)):
     code, nom = projets.code_depuis_nom(principal.filename), projets.nom_depuis_fichier(principal.filename)
     try:
         projets.creer(code, nom, "", None, u["nom"])
-        for f in fichiers:
-            projets.deposer_document(code, f.filename, await f.read())
+        for nom_fichier, donnees in documents:
+            projets.deposer_document(code, nom_fichier, donnees)
+        projets.enregistrer_textes(code, textes)
     except projets.ErreurProjet as e:
+        projets.supprimer_projet_vide(code)
         raise HTTPException(400, str(e))
     base.x("INSERT OR REPLACE INTO projets (code, responsable_id, cree_par, cree_le) VALUES (?,?,?,?)",
            (code, u["id"], u["id"], maintenant()))
@@ -384,6 +390,20 @@ async def enregistrer(request: Request, code: str):
     flash(request, "Enregistré et validé." + (f" {n} cas modifié(s)." if n else "")
           + ("" if r.returncode == 0 else " Les specs d'automatisation n'ont pas pu être générées."), "ok")
     return {"ok": True, "redirection": f"/projets/{code}"}
+
+
+@app.post("/projets/{code}/relancer")
+def relancer(request: Request, code: str, csrf: str = Form("")):
+    """Relance l'analyse avec les documents déjà déposés (après un échec)."""
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    try:
+        gestionnaire.soumettre(code, "analyser", u)
+        base.auditer(u["id"], code, "relance-analyse")
+    except ErreurTache as e:
+        flash(request, str(e), "erreur")
+    return RedirectResponse(f"/projets/{code}", status_code=303)
 
 
 @app.post("/projets/{code}/rouvrir")
