@@ -1,11 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Démonstration locale de QA Factory SaaS, en une commande, sans Docker ni clé OpenRouter.
+"""QA Factory SaaS sur un poste, en une commande, sans Docker.
 
-Lance le faux modèle, OpenCode en mode serveur et l'application web, puis ouvre le navigateur.
+Lance OpenCode en mode serveur et l'application web, puis ouvre le navigateur.
 Fonctionne sous Windows, macOS et Linux.
 
     pip install -r saas/requirements.txt
-    python saas/dev/demo.py
+
+    # Avec une clé OpenRouter (la clé est lue dans la variable OPENROUTER_API_KEY) :
+    python saas/dev/demo.py --modele openrouter/anthropic/claude-sonnet-4.5
+
+    # Avec un modèle gratuit d'OpenCode, sans clé (qualité moindre, offre limitée dans le temps) :
+    python saas/dev/demo.py --modele opencode/deepseek-v4.1-flash-free
+
+    # Démonstration sans IA (faux modèle qui rejoue l'analyse de SauceDemo) :
+    python saas/dev/demo.py --simulation
+
+    # Liste des modèles disponibles :  opencode models openrouter   |   opencode models opencode
 
 Connexion : identifiant « demo », mot de passe « Demo-2026-qa » (à changer à la première connexion).
 Les projets créés vont dans projets/ (ignoré par Git). Ctrl+C pour tout arrêter.
@@ -13,6 +23,7 @@ Les projets créés vont dans projets/ (ignoré par Git). Ctrl+C pour tout arrê
 Squash : pour essayer l'envoi, définir avant le lancement SQUASH_MCP_DIR (dossier du MCP squash-tm
 compilé), SQUASH_TM_BASE_URL et les identifiants, et utiliser un projet Squash d'essai.
 """
+import argparse
 import json
 import os
 import shutil
@@ -51,17 +62,33 @@ def attendre(url, delai=90, auth=None):
 
 
 def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--modele", default=os.environ.get("QAF_MODELE", ""),
+                   help="fournisseur/modèle, ex. openrouter/anthropic/claude-sonnet-4.5 ou opencode/deepseek-v4.1-flash-free")
+    p.add_argument("--simulation", action="store_true", help="faux modèle de démonstration, sans IA")
+    a = p.parse_args()
+    modele = "simulation/demo" if a.simulation else a.modele.strip()
+    if not modele:
+        sys.exit("Choisir un modèle :\n"
+                 "  python saas/dev/demo.py --modele openrouter/<fournisseur>/<modèle>   (clé dans OPENROUTER_API_KEY)\n"
+                 "  python saas/dev/demo.py --modele opencode/deepseek-v4.1-flash-free   (gratuit, sans clé)\n"
+                 "  python saas/dev/demo.py --simulation                                 (sans IA)")
+    if modele.startswith("openrouter/") and not os.environ.get("OPENROUTER_API_KEY"):
+        sys.exit("Clé OpenRouter absente : définir la variable OPENROUTER_API_KEY (voir saas/README.md), puis relancer.")
     for nom, port in PORTS.items():
+        if nom == "modele" and modele != "simulation/demo":
+            continue
         if not libre(port):
             sys.exit(f"Le port {port} ({nom}) est déjà utilisé : fermer l'autre programme ou une démo déjà lancée.")
     opencode = shutil.which("opencode")
     if not opencode:
         sys.exit("OpenCode introuvable : npm install -g opencode-ai")
     config = json.loads((SAAS / "opencode.serveur.json").read_text(encoding="utf-8"))
-    config["provider"].update(json.loads((SAAS / "dev" / "opencode.simulation.json").read_text(encoding="utf-8"))["provider"])
+    if modele == "simulation/demo":
+        config["provider"].update(json.loads((SAAS / "dev" / "opencode.simulation.json").read_text(encoding="utf-8"))["provider"])
     env = dict(os.environ)
     env.update({
-        "QAF_RACINE": str(RACINE), "QAF_DONNEES": str(SAAS / "donnees-demo"), "QAF_MODELE": "simulation/demo",
+        "QAF_RACINE": str(RACINE), "QAF_DONNEES": str(SAAS / "donnees-demo"), "QAF_MODELE": modele,
         "QAF_FAUX_MODELE_URL": f"http://127.0.0.1:{PORTS['modele']}/v1", "OPENCODE_URL": f"http://127.0.0.1:{PORTS['moteur']}",
         "OPENCODE_SERVER_PASSWORD": env.get("OPENCODE_SERVER_PASSWORD") or "demo-moteur", "OPENCODE_CONFIG_CONTENT": json.dumps(config),
         "QAF_ADMIN_IDENTIFIANT": "demo", "QAF_ADMIN_NOM": "Utilisateur démo", "QAF_ADMIN_MOT_DE_PASSE": "Demo-2026-qa",
@@ -71,7 +98,8 @@ def main():
     env.setdefault("SQUASH_TM_BASE_URL", "")
     procs = []
     try:
-        procs.append(subprocess.Popen([sys.executable, str(SAAS / "dev" / "faux_modele.py"), str(PORTS["modele"])], env=env))
+        if modele == "simulation/demo":
+            procs.append(subprocess.Popen([sys.executable, str(SAAS / "dev" / "faux_modele.py"), str(PORTS["modele"])], env=env))
         procs.append(subprocess.Popen([opencode, "serve", "--port", str(PORTS["moteur"])], cwd=RACINE, env=env,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         print("Démarrage du moteur OpenCode...")
@@ -82,7 +110,7 @@ def main():
         url = f"http://127.0.0.1:{PORTS['web']}"
         if not attendre(url + "/sante"):
             sys.exit("L'application n'a pas démarré.")
-        print(f"\nQA Factory (démonstration) : {url}\nIdentifiant : demo   Mot de passe : Demo-2026-qa\nCtrl+C pour arrêter.\n")
+        print(f"\nQA Factory : {url}   (modèle : {modele})\nIdentifiant : demo   Mot de passe : Demo-2026-qa (à changer à la 1re connexion)\nCtrl+C pour arrêter.\n")
         if not os.environ.get("QAF_SANS_NAVIGATEUR"):
             webbrowser.open(url)
         while all(p.poll() is None for p in procs):

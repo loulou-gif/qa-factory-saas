@@ -20,6 +20,30 @@ class ErreurMoteur(Exception):
     pass
 
 
+def expliquer_erreur_modele(erreur: dict) -> str:
+    """Traduit une erreur du fournisseur d'IA en consigne compréhensible."""
+    nom = erreur.get("name", "Erreur")
+    data = erreur.get("data") or {}
+    detail = str(data.get("message") or "")
+    bas = (nom + " " + detail).lower()
+    statut = data.get("statusCode")
+    if nom == "ProviderAuthError" or statut in (401, 403) and "proxy" not in bas or "api key" in bas or "unauthorized" in bas:
+        texte = "Le fournisseur d'IA refuse la clé : vérifier OPENROUTER_API_KEY (ou le modèle choisi)."
+    elif statut == 402 or "credit" in bas or "insufficient" in bas:
+        texte = "Crédit épuisé chez le fournisseur d'IA (ou plafond mensuel atteint) : recharger ou relever le plafond."
+    elif statut == 429 or "rate limit" in bas or "too many" in bas:
+        texte = "Limite d'utilisation du modèle atteinte (fréquent avec les modèles gratuits) : réessayer plus tard ou changer de modèle."
+    elif "proxy" in bas or "econnrefused" in bas or "enotfound" in bas or "fetch failed" in bas or "network" in bas or "timeout" in bas:
+        texte = "L'assistant ne parvient pas à joindre le fournisseur d'IA (réseau, proxy ou pare-feu du serveur)."
+    elif nom == "ContextOverflowError":
+        texte = "Le cahier des charges est trop long pour ce modèle : choisir un modèle à plus grande capacité ou découper le document."
+    elif nom == "MessageAbortedError":
+        texte = "Analyse arrêtée."
+    else:
+        texte = "L'assistant a rencontré une erreur."
+    return f"{texte} Détail : {nom} {detail}".strip()
+
+
 class Moteur:
     def __init__(self):
         self._client = None
@@ -90,9 +114,7 @@ class Moteur:
             raise ErreurMoteur(f"Le moteur a refusé la commande (HTTP {r.status_code}) : {r.text[:300]}")
         erreur = (r.json().get("info") or {}).get("error")
         if erreur:
-            nom = erreur.get("name", "Erreur")
-            detail = (erreur.get("data") or {}).get("message") or ""
-            raise ErreurMoteur(f"{nom} : {detail}".strip(" :"))
+            raise ErreurMoteur(expliquer_erreur_modele(erreur))
         return bilan
 
     def _relever(self, base, tid, sid) -> dict:

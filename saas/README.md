@@ -22,14 +22,28 @@ Garde-fous propres à la version serveur :
 - « Enregistrer » refuse de valider si le contrôle ISTQB signale des erreurs ;
 - comptes nominatifs, mots de passe hachés, mot de passe provisoire à changer, protection CSRF, journal d'audit (qui a validé, qui a envoyé dans Squash).
 
-### Voir l'application tout de suite (démonstration locale)
+### Lancer l'application sur un poste (sans Docker)
 
 Sur un poste avec Python, Node et OpenCode, depuis le dossier du dépôt :
 ```bash
 pip install -r saas/requirements.txt
-python saas/dev/demo.py
+
+# 1. Avec une clé OpenRouter (Git Bash ; dans PowerShell : $env:OPENROUTER_API_KEY = "sk-or-...")
+export OPENROUTER_API_KEY="sk-or-..."
+python saas/dev/demo.py --modele openrouter/anthropic/claude-sonnet-4.5
+
+# 2. Avec un modèle gratuit d'OpenCode, sans clé
+python saas/dev/demo.py --modele opencode/deepseek-v4.1-flash-free
+
+# 3. Sans IA (faux modèle qui rejoue l'analyse de SauceDemo)
+python saas/dev/demo.py --simulation
 ```
-Le navigateur s'ouvre sur `http://127.0.0.1:8000` ; identifiant `demo`, mot de passe `Demo-2026-qa`. Un faux modèle rejoue l'analyse de SauceDemo : déposer n'importe quel cahier des charges (par exemple `projets/saucedemo/01-entrant/cahier-des-charges.md`). Pour essayer l'envoi dans Squash, définir avant le lancement `SQUASH_MCP_DIR`, `SQUASH_TM_BASE_URL`, `SQUASH_TM_USERNAME` et `SQUASH_TM_PASSWORD`, et utiliser un projet Squash d'essai.
+Le navigateur s'ouvre sur `http://127.0.0.1:8000` ; identifiant `demo`, mot de passe `Demo-2026-qa` (à changer à la première connexion). Liste des modèles : `opencode models openrouter`, `opencode models opencode`. Pour essayer l'envoi dans Squash, définir aussi `SQUASH_MCP_DIR`, `SQUASH_TM_BASE_URL`, `SQUASH_TM_USERNAME` et `SQUASH_TM_PASSWORD`, et utiliser un projet Squash d'essai.
+
+Choisir le modèle :
+- **Clé OpenRouter** : la voie prévue pour le serveur. Créer une clé dédiée avec un plafond mensuel, activer Zero Data Retention dans les réglages de confidentialité du compte OpenRouter.
+- **Modèles gratuits d'OpenCode** : sans clé, mais offre limitée dans le temps, qualité nettement inférieure pour une analyse aussi exigeante, et certains peuvent réutiliser les données pour l'entraînement : n'y mettre aucun cahier des charges client. Parmi eux, GLM-5.3-Flash Free et DeepSeek V4.1 Flash Free sont annoncés sans conservation des données.
+- **Abonnement Claude (Pro, Max)** : impossible dans OpenCode. Depuis 2026, Anthropic réserve l'abonnement à Claude Code et Claude.ai ; tout autre outil passe par une clé API facturée à l'usage. Pour utiliser l'abonnement, rester sur `qa-factory` avec Claude Code sur le poste.
 
 ## Architecture
 
