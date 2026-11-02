@@ -90,7 +90,8 @@ def _ok(httpx, url):
 
 def csrf(client, url="/"):
     h = client.get(url).text
-    return re.search(r'name="csrf" value="([^"]+)"', h).group(1)
+    m = re.search(r'name="csrf" content="([^"]+)"', h) or re.search(r'name="csrf" value="([^"]+)"', h)
+    return m.group(1)
 
 
 def connecter(client, ident, mdp):
@@ -99,135 +100,117 @@ def connecter(client, ident, mdp):
     assert r.status_code in (200, 303)
 
 
-def tache_finie(base, tid, client=None, accepter=True):
+def jx(client, url, corps=None, page="/"):
+    return client.post(url, json=corps or {}, headers={"X-CSRF": csrf(client, page), "Accept": "application/json"})
+
+
+def suivre(client, tid, accepter=True, delai=180):
     def fin():
-        t = base.tache(tid)
-        if t["statut"] == "attente_confirmation" and client:
-            for a in t["attente"] or []:
-                if a["genre"] == "permission":
-                    client.post(f"/taches/{tid}/permission", data={"demande": a["id"], "decision": "accepter" if accepter else "refuser",
-                                                                   "csrf": csrf(client, f"/taches/{tid}")})
-        return t if t["statut"] in ("termine", "echec", "annule") else None
-    return attendre(fin, 180)
+        d = client.get(f"/taches/{tid}/progression").json()
+        for a in d["attente"]:
+            if a["genre"] == "permission":
+                jx(client, f"/taches/{tid}/permission", {"demande": a["id"], "accepter": accepter})
+        return d if not d["actif"] else None
+    return attendre(fin, delai)
 
 
 def test_parcours_temps_a(env):
     c, racine = env["client"], env["racine"]
-    from app.main import base
 
-    # Connexion de l'administrateur initial : changement de mot de passe obligatoire
+    # Administrateur initial : changement de mot de passe obligatoire, puis création d'un testeur
     connecter(c, "admin", "Provisoire123")
     assert "/compte" in c.get("/").url.path
     c.post("/compte", data={"actuel": "Provisoire123", "nouveau": "Admin-2026-ok", "confirmation": "Admin-2026-ok", "csrf": csrf(c, "/compte")})
-    assert c.get("/").url.path == "/"
+    c.post("/admin/utilisateurs", data={"identifiant": "test", "nom": "Koffi Testeur", "role": "testeur", "mot_de_passe": "Provisoire456",
+                                        "csrf": csrf(c, "/admin/utilisateurs")})
+    connecter(c, "test", "Provisoire456")
+    c.post("/compte", data={"actuel": "Provisoire456", "nouveau": "Perso-2026-xx", "confirmation": "Perso-2026-xx", "csrf": csrf(c, "/compte")})
+    accueil = c.get("/").text
+    assert 'id="depot"' in accueil and "Déposez ici votre cahier des charges" in accueil
 
-    # Comptes
-    for ident, nom, role in (("resp", "Awa Responsable", "responsable"), ("test", "Koffi Testeur", "testeur")):
-        c.post("/admin/utilisateurs", data={"identifiant": ident, "nom": nom, "role": role, "mot_de_passe": "Provisoire456",
-                                            "csrf": csrf(c, "/admin/utilisateurs")})
-    for ident in ("resp", "test"):
-        connecter(c, ident, "Provisoire456")
-        c.post("/compte", data={"actuel": "Provisoire456", "nouveau": "Perso-2026-xx", "confirmation": "Perso-2026-xx", "csrf": csrf(c, "/compte")})
+    # Un format interdit est refusé
+    r = c.post("/demarrer", files=[("fichiers", ("virus.exe", b"x", "application/octet-stream"))], headers={"X-CSRF": csrf(c)})
+    assert r.status_code == 400 and "format non accepté" in r.json()["erreur"]
 
-    # Le testeur ne crée pas de projet ; le responsable si (sans URL : site pas encore livré)
-    connecter(c, "test", "Perso-2026-xx")
-    assert c.get("/projets/nouveau").status_code == 403
-    connecter(c, "resp", "Perso-2026-xx")
-    r = c.post("/projets/nouveau", data={"code": "demo", "nom": "Démo", "url": "", "squash_id": "28", "csrf": csrf(c, "/projets/nouveau")})
-    assert r.url.path == "/projets/demo"
-    fiche = json.loads((racine / "projets/demo/projet.json").read_text(encoding="utf-8"))
-    assert fiche["responsable"] == "Awa Responsable" and fiche["application"]["url"] == ""
-
-    # Dépôt du cahier des charges (et refus d'un format interdit)
+    # Déposer, c'est lancer : projet créé depuis le nom du fichier, analyse par le vrai OpenCode
     cdc = (racine / "projets/saucedemo/01-entrant/cahier-des-charges.md").read_bytes()
-    c.post("/projets/demo/documents", files=[("fichiers", ("cdc.md", cdc, "text/markdown"))], data={"csrf": csrf(c, "/projets/demo")})
-    c.post("/projets/demo/documents", files=[("fichiers", ("virus.exe", b"x", "application/octet-stream"))], data={"csrf": csrf(c, "/projets/demo")})
-    assert sorted(p.name for p in (racine / "projets/demo/01-entrant").iterdir()) == ["LISEZMOI.md", "cdc.md"]
+    r = c.post("/demarrer", files=[("fichiers", ("Cahier_des_charges_Boutique.md", cdc, "text/markdown"))],
+               headers={"X-CSRF": csrf(c), "Accept": "application/json"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    code, tid = d["projet"], d["tache"]
+    assert code == "cahier-des-charges-boutique" and d["nom"] == "Cahier des charges Boutique"
+    vu = attendre(lambda: (lambda x: x if x["attente"] or not x["actif"] else None)(c.get(f"/taches/{tid}/progression").json()), 120)
+    assert vu["attente"] and vu["message"] == "L'assistant attend votre accord", vu
+    assert 0 < vu["pourcentage"] < 100
+    fin = suivre(c, tid)
+    assert fin["statut"] == "termine" and fin["pourcentage"] == 100 and fin["message"] == "Génération terminée", fin
 
-    # Analyse par le testeur : vrai OpenCode, confirmation demandée puis accordée dans la page
-    connecter(c, "test", "Perso-2026-xx")
-    r = c.post("/projets/demo/analyser", data={"csrf": csrf(c, "/projets/demo")})
-    tid = int(r.url.path.rsplit("/", 1)[1])
-    vu_attente = attendre(lambda: base.tache(tid)["statut"] == "attente_confirmation" or base.tache(tid)["statut"] in ("termine", "echec"), 120)
-    t = base.tache(tid)
-    assert t["statut"] == "attente_confirmation", t["journal"]
-    assert "cp -r projets/saucedemo" in t["attente"][0]["detail"]
-    assert "Autoriser une fois" in c.get(f"/taches/{tid}").text
-    t = tache_finie(base, tid, c)
-    assert t["statut"] == "termine", t["journal"]
-    assert t["resultat"]["controle"]["ok"]
-    assert "Analyse terminée" in t["resultat"]["compte_rendu"]
-    assert any(e["outil"] == "bash" for e in t["resultat"]["etapes"])
-    assert (racine / "projets/demo/02-a-valider/cas-de-tests.xlsx").exists()
+    # Fichiers produits, vues digestes
+    page = c.get(f"/projets/{code}").text
+    assert "27 cas sur 4 fonctionnalités" in page and "dont 2 bloquantes" in page and "Relire les cas de tests" in page
+    assert "Q-005" in c.get(f"/projets/{code}/questions").text
+    assert "JDD-001" in c.get(f"/projets/{code}/donnees").text
+    cas = c.get(f"/projets/{code}/cas").text
+    assert "CT0001" in cas and "Je dois voir" in cas and "16 nominaux" in cas and 'id="enregistrer"' in cas
 
-    # Relecture en ligne et documents
-    assert "CT0001" in c.get("/projets/demo/cas/a-valider").text
-    assert "Q-002" in c.get("/projets/demo/lire/02-a-valider/ambiguites.md").text
+    # Contrôles des modifications
+    r = jx(c, f"/projets/{code}/enregistrer", {"modifications": [{"id": "CT0003", "etapes": []}]}, f"/projets/{code}/cas")
+    assert r.status_code == 400 and "au moins une étape" in r.json()["erreur"]
+    assert not (racine / f"projets/{code}/03-valide/cas-de-tests.json").exists()
 
-    # Correction par l'Excel renvoyé
-    from openpyxl import load_workbook
-    xlsx = c.get("/projets/demo/telecharger/02-a-valider/cas-de-tests.xlsx").content
-    wb = load_workbook(io.BytesIO(xlsx))
-    ws = wb["Cas de tests"]
-    for ligne in ws.iter_rows(min_row=2):
-        if ligne[0].value == "CT0003":
-            ligne[2].value = "Bloquer la connexion quand le mot de passe est vide"
-    sortie = io.BytesIO()
-    wb.save(sortie)
-    r = c.post("/projets/demo/vue", files={"fichier": ("cas-de-tests.xlsx", sortie.getvalue(), "application/octet-stream")},
-               data={"csrf": csrf(c, "/projets/demo")})
-    data = json.loads((racine / "projets/demo/02-a-valider/cas-de-tests.json").read_text(encoding="utf-8"))
-    assert next(x for x in data["cas_de_tests"] if x["id"] == "CT0003")["titre"] == "Bloquer la connexion quand le mot de passe est vide"
-    assert "pris en compte" in r.text
+    # Enregistrer = modifications reportées + validation immédiate + specs
+    modif = {"id": "CT0003", "titre": "Bloquer la connexion quand le mot de passe est vide",
+             "etapes": [{"action": "Saisir le nom d'utilisateur seul", "resultat_attendu": "Le champ est rempli."},
+                        {"action": "Cliquer sur le bouton de connexion", "resultat_attendu": "Un message indique que le mot de passe est obligatoire."}]}
+    r = jx(c, f"/projets/{code}/enregistrer", {"modifications": [modif]}, f"/projets/{code}/cas")
+    assert r.status_code == 200 and r.json()["redirection"] == f"/projets/{code}", r.text
+    valide = json.loads((racine / f"projets/{code}/03-valide/cas-de-tests.json").read_text(encoding="utf-8"))
+    ct3 = next(x for x in valide["cas_de_tests"] if x["id"] == "CT0003")
+    assert ct3["titre"] == modif["titre"] and len(ct3["etapes"]) == 2 and valide["meta"]["version"] == 3
+    assert not (racine / f"projets/{code}/02-a-valider/cas-de-tests.json").exists()
+    assert (racine / f"projets/{code}/04-livrables/specs/authentification.md").exists()
+    assert "validé par Koffi Testeur" in (racine / f"projets/{code}/journal.md").read_text(encoding="utf-8")
+    page = c.get(f"/projets/{code}").text
+    assert "Enregistré et validé" in page and "Envoyer dans Squash" in page
+    assert "lecture seule" in c.get(f"/projets/{code}/cas").text
 
-    # Un autre nom de fichier est refusé
-    r = c.post("/projets/demo/vue", files={"fichier": ("autre.xlsx", sortie.getvalue(), "application/octet-stream")},
-               data={"csrf": csrf(c, "/projets/demo")})
-    assert "Seuls cas-de-tests.xlsx" in r.text
-
-    # Validation : refusée au testeur, faite par le responsable
-    assert c.post("/projets/demo/valider", data={"csrf": csrf(c, "/projets/demo")}).status_code == 403
-    connecter(c, "resp", "Perso-2026-xx")
-    c.post("/projets/demo/valider", data={"csrf": csrf(c, "/projets/demo")})
-    assert (racine / "projets/demo/03-valide/cas-de-tests.json").exists()
-    assert not (racine / "projets/demo/02-a-valider/cas-de-tests.json").exists()
-    assert "validé par Awa Responsable" in (racine / "projets/demo/journal.md").read_text(encoding="utf-8")
-
-    # Publication Squash : simulation, puis publication, puis plus rien à créer
-    r = c.post("/projets/demo/publier/simulation", data={"csrf": csrf(c, "/projets/demo")})
-    sim = tache_finie(base, int(r.url.path.rsplit("/", 1)[1]))
-    assert sim["statut"] == "termine", sim["journal"]
-    assert sim["resultat"]["resume"]["creer"] == 53
+    # Squash : vérification puis envoi, sans doublon à la relance
+    r = jx(c, f"/projets/{code}/squash/simuler", {"squash_id": "abc"}, f"/projets/{code}")
+    assert r.status_code == 400
+    r = jx(c, f"/projets/{code}/squash/simuler", {"squash_id": "28"}, f"/projets/{code}")
+    sim = suivre(c, r.json()["tache"])
+    assert sim["statut"] == "termine", sim
+    assert sim["simulation"]["resume"]["creer"] == 53 and sim["simulation"]["projet"]["id"] == 28
     assert len(env["squash"].store["testCases"]) == 0
-    page = c.get("/projets/demo").text
-    assert "Publier dans Squash" in page
-    r = c.post("/projets/demo/publier", data={"simulation": sim["id"], "csrf": csrf(c, "/projets/demo")})
-    pub = tache_finie(base, int(r.url.path.rsplit("/", 1)[1]))
-    assert pub["statut"] == "termine", pub["journal"]
+    r = jx(c, f"/projets/{code}/squash/publier", {"simulation": r.json()["tache"]}, f"/projets/{code}")
+    pub = suivre(c, r.json()["tache"])
+    assert pub["statut"] == "termine" and pub["crees"] == 53 and pub["message"] == "Envoyé dans Squash", pub
     assert len(env["squash"].store["testCases"]) == 27 and len(env["squash"].store["requirements"]) == 17
-    r = c.post("/projets/demo/publier/simulation", data={"csrf": csrf(c, "/projets/demo")})
-    sim2 = tache_finie(base, int(r.url.path.rsplit("/", 1)[1]))
-    assert sim2["resultat"]["resume"] == {"creer": 0, "existe": 53, "recreer": 0}
-    # Une ancienne simulation ne peut pas servir après une remise en relecture puis une nouvelle validation modifiée
-    assert "Tout est déjà publié" in c.get("/projets/demo").text
+    assert "27 cas et 17 exigences sont dans Squash" in c.get(f"/projets/{code}").text
+    r = jx(c, f"/projets/{code}/squash/simuler", {}, f"/projets/{code}")
+    sim2 = suivre(c, r.json()["tache"])
+    assert sim2["simulation"]["resume"] == {"creer": 0, "existe": 53, "recreer": 0}
 
-    # Specs
-    r = c.post("/projets/demo/specs", data={"csrf": csrf(c, "/projets/demo")})
-    sp = tache_finie(base, int(r.url.path.rsplit("/", 1)[1]))
-    assert sp["statut"] == "termine", sp["journal"]
-    assert (racine / "projets/demo/04-livrables/specs/authentification.md").exists()
+    # Modifier à nouveau : les cas redeviennent modifiables
+    c.post(f"/projets/{code}/rouvrir", data={"csrf": csrf(c, f"/projets/{code}")})
+    assert (racine / f"projets/{code}/02-a-valider/cas-de-tests.json").exists()
+    assert 'id="enregistrer"' in c.get(f"/projets/{code}/cas").text
+    assert "Reprendre" in c.get("/").text and "Cahier des charges Boutique" in c.get("/projets").text
 
 
 def test_securite(env):
     c = env["client"]
+    code = "cahier-des-charges-boutique"
     c.post("/deconnexion", data={"csrf": csrf(c, "/connexion")})
-    assert c.get("/projets/demo").url.path == "/connexion"
-    assert c.get("/projets/demo/telecharger/02-a-valider/cas-de-tests.json").url.path == "/connexion"
+    assert c.get(f"/projets/{code}").url.path == "/connexion"
+    assert c.get(f"/projets/{code}/telecharger/02-a-valider/cas-de-tests.json").url.path == "/connexion"
+    assert c.post("/demarrer", files=[("fichiers", ("a.md", b"x", "text/markdown"))], headers={"X-CSRF": "x"}).status_code in (400, 401)
     connecter(c, "test", "Perso-2026-xx")
-    assert c.get("/projets/demo/telecharger/../../saas/donnees/.secret").status_code == 404
-    assert c.get("/projets/demo/telecharger/projet.json").status_code == 404
-    assert c.get("/projets/demo/telecharger/03-valide/.synchro.json").status_code == 404
-    assert c.post("/projets/demo/specs", data={"csrf": "faux"}).status_code == 400
+    assert c.get(f"/projets/{code}/telecharger/../../saas/donnees/.secret").status_code == 404
+    assert c.get(f"/projets/{code}/telecharger/projet.json").status_code == 404
+    assert c.get(f"/projets/{code}/telecharger/02-a-valider/.synchro.json").status_code == 404
+    assert c.post(f"/projets/{code}/enregistrer", json={}, headers={"X-CSRF": "faux"}).status_code == 400
     assert c.get("/admin/utilisateurs").status_code == 403
     assert c.get("/projets/..%2Fsaucedemo").status_code == 404
     r = c.post("/connexion", data={"identifiant": "test", "mot_de_passe": "mauvais", "csrf": csrf(c, "/connexion")})

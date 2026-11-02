@@ -1,7 +1,0 @@
-{% extends "base.html" %}
-{% block titre %}{{ titre }} — {{ fiche.nom }}{% endblock %}
-{% block contenu %}
-<p class="discret"><a href="/">Projets</a> / <a href="/projets/{{ code }}">{{ fiche.nom }}</a> / {{ titre }}</p>
-<div class="actions" style="margin-bottom:1rem"><a class="bouton secondaire" href="/projets/{{ code }}/telecharger/{{ dossier }}/{{ titre }}">Télécharger le fichier</a></div>
-<div class="carte document-rendu">{{ contenu|safe }}</div>
-{% endblock %}

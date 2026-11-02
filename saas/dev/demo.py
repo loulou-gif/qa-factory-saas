@@ -1,0 +1,105 @@
+# -*- coding: utf-8 -*-
+"""Démonstration locale de QA Factory SaaS, en une commande, sans Docker ni clé OpenRouter.
+
+Lance le faux modèle, OpenCode en mode serveur et l'application web, puis ouvre le navigateur.
+Fonctionne sous Windows, macOS et Linux.
+
+    pip install -r saas/requirements.txt
+    python saas/dev/demo.py
+
+Connexion : identifiant « demo », mot de passe « Demo-2026-qa » (à changer à la première connexion).
+Les projets créés vont dans projets/ (ignoré par Git). Ctrl+C pour tout arrêter.
+
+Squash : pour essayer l'envoi, définir avant le lancement SQUASH_MCP_DIR (dossier du MCP squash-tm
+compilé), SQUASH_TM_BASE_URL et les identifiants, et utiliser un projet Squash d'essai.
+"""
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+import webbrowser
+from pathlib import Path
+
+RACINE = Path(__file__).resolve().parents[2]
+SAAS = RACINE / "saas"
+PORTS = {"modele": 4010, "moteur": 4096, "web": int(os.environ.get("QAF_PORT", "8000"))}
+
+
+def libre(port):
+    with socket.socket() as s:
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def attendre(url, delai=90, auth=None):
+    fin = time.time() + delai
+    while time.time() < fin:
+        try:
+            req = urllib.request.Request(url)
+            if auth:
+                import base64
+                req.add_header("Authorization", "Basic " + base64.b64encode(auth.encode()).decode())
+            urllib.request.urlopen(req, timeout=2)
+            return True
+        except Exception:
+            time.sleep(0.5)
+    return False
+
+
+def main():
+    for nom, port in PORTS.items():
+        if not libre(port):
+            sys.exit(f"Le port {port} ({nom}) est déjà utilisé : fermer l'autre programme ou une démo déjà lancée.")
+    opencode = shutil.which("opencode")
+    if not opencode:
+        sys.exit("OpenCode introuvable : npm install -g opencode-ai")
+    config = json.loads((SAAS / "opencode.serveur.json").read_text(encoding="utf-8"))
+    config["provider"].update(json.loads((SAAS / "dev" / "opencode.simulation.json").read_text(encoding="utf-8"))["provider"])
+    env = dict(os.environ)
+    env.update({
+        "QAF_RACINE": str(RACINE), "QAF_DONNEES": str(SAAS / "donnees-demo"), "QAF_MODELE": "simulation/demo",
+        "QAF_FAUX_MODELE_URL": f"http://127.0.0.1:{PORTS['modele']}/v1", "OPENCODE_URL": f"http://127.0.0.1:{PORTS['moteur']}",
+        "OPENCODE_SERVER_PASSWORD": env.get("OPENCODE_SERVER_PASSWORD") or "demo-moteur", "OPENCODE_CONFIG_CONTENT": json.dumps(config),
+        "QAF_ADMIN_IDENTIFIANT": "demo", "QAF_ADMIN_NOM": "Utilisateur démo", "QAF_ADMIN_MOT_DE_PASSE": "Demo-2026-qa",
+        "PYTHONUNBUFFERED": "1",
+    })
+    env.setdefault("SQUASH_MCP_DIR", str(RACINE.parent / "squash-tm-mcp"))
+    env.setdefault("SQUASH_TM_BASE_URL", "")
+    procs = []
+    try:
+        procs.append(subprocess.Popen([sys.executable, str(SAAS / "dev" / "faux_modele.py"), str(PORTS["modele"])], env=env))
+        procs.append(subprocess.Popen([opencode, "serve", "--port", str(PORTS["moteur"])], cwd=RACINE, env=env,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        print("Démarrage du moteur OpenCode...")
+        if not attendre(f"http://127.0.0.1:{PORTS['moteur']}/session/status", auth="opencode:" + env["OPENCODE_SERVER_PASSWORD"]):
+            sys.exit("Le moteur OpenCode n'a pas démarré.")
+        procs.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", str(SAAS),
+                                       "--host", "127.0.0.1", "--port", str(PORTS["web"])], cwd=RACINE, env=env))
+        url = f"http://127.0.0.1:{PORTS['web']}"
+        if not attendre(url + "/sante"):
+            sys.exit("L'application n'a pas démarré.")
+        print(f"\nQA Factory (démonstration) : {url}\nIdentifiant : demo   Mot de passe : Demo-2026-qa\nCtrl+C pour arrêter.\n")
+        if not os.environ.get("QAF_SANS_NAVIGATEUR"):
+            webbrowser.open(url)
+        while all(p.poll() is None for p in procs):
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for p in reversed(procs):
+            if p.poll() is None:
+                p.send_signal(signal.SIGINT) if os.name != "nt" else p.terminate()
+        for p in procs:
+            try:
+                p.wait(10)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        print("Démonstration arrêtée.")
+
+
+if __name__ == "__main__":
+    main()

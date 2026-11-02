@@ -14,3 +14,4 @@ projets/*
 # QA Factory SaaS
 saas/donnees/
 saas/.env
+saas/donnees-demo/

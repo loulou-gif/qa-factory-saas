@@ -261,3 +261,102 @@ def lire_journal(code: str) -> list:
 def charger_cas(code: str, dossier_nom: str):
     f = dossier(code) / dossier_nom / "cas-de-tests.json"
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+
+# ---------------------------------------------------------------- parcours simplifié
+
+def code_depuis_nom(nom: str) -> str:
+    import unicodedata
+    base = unicodedata.normalize("NFKD", Path(nom).stem).encode("ascii", "ignore").decode("ascii").lower()
+    base = re.sub(r"[^a-z0-9]+", "-", base).strip("-")[:40].strip("-") or "projet"
+    if len(base) < 2:
+        base = f"projet-{base}"
+    code, n = base, 2
+    while existe(code) or (reglages.projets / code).exists():
+        code = f"{base}-{n}"
+        n += 1
+    return code
+
+
+def nom_depuis_fichier(nom: str) -> str:
+    t = re.sub(r"[_\-]+", " ", Path(nom).stem).strip()
+    return (t[:1].upper() + t[1:])[:80] or "Projet"
+
+
+def enregistrer_modifications(code: str, modifications: list) -> int:
+    """Applique les modifications faites dans la page de relecture au JSON de 02-a-valider.
+
+    modifications : [{id, titre?, prerequis?, etapes?: [{action, resultat_attendu}]}]
+    Renvoie le nombre de cas réellement modifiés (la version augmente de 1 s'il y en a).
+    """
+    f = dossier(code) / "02-a-valider" / "cas-de-tests.json"
+    if not f.exists():
+        raise ErreurProjet("Rien à enregistrer : les cas ont déjà été validés.")
+    data = json.loads(f.read_text(encoding="utf-8"))
+    par_id = {c["id"]: c for c in data.get("cas_de_tests") or []}
+    n = 0
+    for m in modifications or []:
+        c = par_id.get(str(m.get("id", "")))
+        if not c:
+            raise ErreurProjet(f"Cas {m.get('id')} introuvable.")
+        avant = json.dumps(c, sort_keys=True, ensure_ascii=False)
+        for champ in ("titre", "prerequis"):
+            if champ in m:
+                v = str(m[champ] or "").strip()
+                if not v:
+                    raise ErreurProjet(f"{c['id']} : le champ « {champ} » ne peut pas être vide.")
+                c[champ] = v[:2000]
+        if "etapes" in m:
+            etapes = []
+            for e in m["etapes"] or []:
+                a, r = str(e.get("action") or "").strip(), str(e.get("resultat_attendu") or "").strip()
+                if a or r:
+                    if not a or not r:
+                        raise ErreurProjet(f"{c['id']} : chaque étape a une action et un résultat attendu.")
+                    etapes.append({"action": a[:2000], "resultat_attendu": r[:2000]})
+            if not etapes:
+                raise ErreurProjet(f"{c['id']} : un cas garde au moins une étape.")
+            c["etapes"] = etapes
+        if json.dumps(c, sort_keys=True, ensure_ascii=False) != avant:
+            n += 1
+    if n:
+        data.setdefault("meta", {})["version"] = int(data["meta"].get("version") or 0) + 1
+        f.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        r = script("rendre_revue.py", code, "--forcer")
+        if r.returncode:
+            raise ErreurProjet((r.stderr or r.stdout).strip()[-400:])
+    return n
+
+
+def questions(code: str, dossier_nom: str) -> list:
+    from qa_commun import _champ, _sections
+    f = dossier(code) / dossier_nom / "ambiguites.md"
+    if not f.exists():
+        return []
+    res = []
+    for qid, s in _sections(f.read_text(encoding="utf-8"), r"Q-\d{3,}").items():
+        champ = lambda n: _champ(s["corps"], n)  # noqa: E731
+        res.append({"id": qid, "titre": s["titre"], "type": champ("Type"), "gravite": champ("Gravité").lower(),
+                    "source": champ("Source"), "constat": champ("Constat"), "question": champ("Question"),
+                    "impact": champ("Impact"), "proposition": champ("Proposition"), "reponse": champ("Réponse"),
+                    "statut": champ("Statut").lower()})
+    ordre = {"bloquante": 0, "importante": 1, "mineure": 2}
+    return sorted(res, key=lambda q: (q["statut"] != "ouverte", ordre.get(q["gravite"], 3), q["id"]))
+
+
+def jeux(code: str, dossier_nom: str) -> list:
+    from qa_commun import _champ, _sections
+    f = dossier(code) / dossier_nom / "jeux-de-donnees.md"
+    if not f.exists():
+        return []
+    res = []
+    for jid, s in _sections(f.read_text(encoding="utf-8"), r"JDD-\d{3,}").items():
+        lignes = []
+        for l in s["corps"].splitlines():
+            cols = [x.strip() for x in l.strip().strip("|").split("|")]
+            if l.strip().startswith("|") and len(cols) >= 2 and not re.match(r"^:?-+:?$", cols[0]) and cols[0].lower() != "champ":
+                lignes.append({"champ": cols[0], "valeur": cols[1].strip("`"), "remarque": cols[2] if len(cols) > 2 else ""})
+        res.append({"id": jid, "titre": s["titre"], "type": _champ(s["corps"], "Type"), "origine": _champ(s["corps"], "Origine"),
+                    "cas": _champ(s["corps"], "Cas concernés"), "sensibilite": _champ(s["corps"], "Sensibilité"),
+                    "prerequis": _champ(s["corps"], "Prérequis"), "lignes": lignes})
+    return res

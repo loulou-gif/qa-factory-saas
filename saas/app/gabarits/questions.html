@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block titre %}Questions pour le client · {{ fiche.nom }}{% endblock %}
+{% block contenu %}
+{% set ouvertes = questions|selectattr('statut', 'equalto', 'ouverte')|list %}
+<div class="etroit">
+<a class="retour" href="/projets/{{ code }}">Retour aux fichiers</a>
+<h1>Questions pour le client</h1>
+<p class="synthese">Ce que le cahier des charges ne dit pas. {{ ouvertes|length }} question{{ 's' if ouvertes|length > 1 }} sans réponse ; à envoyer au client.
+  <a href="/projets/{{ code }}/telecharger/{{ dossier }}/ambiguites.md">Télécharger la liste</a></p>
+{% for q in questions %}
+<article class="carte">
+  <div class="entete-carte">
+    <span class="id">{{ q.id }}</span>
+    <strong>{{ q.titre }}</strong>
+    <span class="pastille {{ 'alerte' if q.gravite == 'bloquante' else 'neutre' }}">{{ q.gravite|capitalize }}</span>
+    {% if q.statut != 'ouverte' %}<span class="pastille ok">{{ q.statut|capitalize }}</span>{% endif %}
+  </div>
+  <p class="question">{{ q.question }}</p>
+  {% if q.reponse %}<p><strong>Réponse :</strong> {{ q.reponse }}</p>{% endif %}
+  <details>
+    <summary>Pourquoi cette question</summary>
+    <dl>
+      <dt>Constat</dt><dd>{{ q.constat }}</dd>
+      <dt>Source</dt><dd>{{ q.source }}</dd>
+      <dt>Proposition</dt><dd>{{ q.proposition }}</dd>
+      <dt>Concerne</dt><dd>{{ q.impact }}</dd>
+    </dl>
+  </details>
+</article>
+{% endfor %}
+</div>
+{% endblock %}

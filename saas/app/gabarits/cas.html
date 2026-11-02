@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block titre %}Cas de tests · {{ fiche.nom }}{% endblock %}
+{% macro chevron() %}<svg class="chevron" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5l5 5-5 5"/></svg>{% endmacro %}
+{% macro zone(nom, valeur, classe='') %}{% if modifiable %}<textarea class="{{ classe }}" data-champ="{{ nom }}" rows="1">{{ valeur }}</textarea>{% else %}<div class="lecture {{ classe }}">{{ valeur }}</div>{% endif %}{% endmacro %}
+{% block contenu %}
+{% set n = data.cas_de_tests|length %}
+<a class="retour" href="/projets/{{ code }}">Retour aux fichiers</a>
+<h1>Cas de tests</h1>
+<p class="synthese">
+  {{ n }} cas sur {{ groupes|length }} fonctionnalité{{ 's' if groupes|length > 1 }} :
+  {% set formes = {'nominal': ('nominal', 'nominaux'), 'negatif': ('négatif', 'négatifs'), 'limite': ('aux limites', 'aux limites')} %}
+  {% for k, v in natures.items() %}{{ v }} {{ (formes.get(k) or (k, k))[1 if v > 1 else 0] }}{{ ', ' if not loop.last else '.' }}{% endfor %}
+  {% if nb_bloquantes %}<br><span class="discret">{{ nb_bloquantes }} question{{ 's' if nb_bloquantes > 1 }} attend{{ 'ent' if nb_bloquantes > 1 }} la réponse du client : <a href="/projets/{{ code }}/questions">les voir</a>.</span>{% endif %}
+</p>
+{% if not modifiable %}<div class="message ok" style="animation:none">Version validée : lecture seule.</div>{% endif %}
+
+<div class="onglets" role="tablist" aria-label="Fonctionnalités">
+  {% for f, liste in groupes %}
+  <button type="button" role="tab" id="onglet-{{ loop.index }}" aria-controls="groupe-{{ loop.index }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ f }}<span>{{ liste|length }}</span></button>
+  {% endfor %}
+</div>
+
+<div id="liste-cas" data-projet="{{ code }}">
+{% for f, liste in groupes %}
+<section class="groupe" id="groupe-{{ loop.index }}" role="tabpanel" aria-labelledby="onglet-{{ loop.index }}" {% if not loop.first %}hidden{% endif %}>
+  {% for c in liste %}
+  {% set bloque = (c.questions or [])|select('in', bloquantes)|list %}
+  <article class="cas" data-id="{{ c.id }}">
+    <button type="button" class="cas-tete" aria-expanded="false">
+      <span class="id">{{ c.id }}</span>
+      <span class="titre">{{ c.titre }}</span>
+      {% if bloque %}<span class="pastille alerte" title="Dépend de {{ bloque|join(', ') }}">En attente du client</span>{% endif %}
+      <span class="pastille {{ 'neutre' if c.type == 'nominal' else ('alerte' if c.type == 'limite' else '') }}">{{ lib.lib(lib.NATURES, c.type) }}</span>
+      {{ chevron() }}
+    </button>
+    <div class="cas-corps"><div><div class="cas-contenu">
+      <p class="meta">
+        {{ lib.lib(lib.TECHNIQUES_LIB, c.technique) }} · {{ lib.lib(lib.TYPES_TEST_LIB, c.type_test) }} · importance {{ lib.lib(lib.IMPORTANCES_LIB, c.importance or 'MEDIUM')|lower }}
+        · exigence{{ 's' if (c.exigences or [])|length > 1 }} {{ (c.exigences or [])|join(', ') }}{% if c.jeux_de_donnees %} · données {{ c.jeux_de_donnees|join(', ') }}{% endif %}
+      </p>
+      {% if modifiable %}<label>Titre</label>{{ zone('titre', c.titre, 'champ-titre') }}{% endif %}
+      <label>Avant de commencer</label>
+      {{ zone('prerequis', c.prerequis) }}
+      <table class="etapes">
+        <thead><tr><th></th><th>Je fais</th><th>Je dois voir</th><th></th></tr></thead>
+        <tbody>
+          {% for s in c.etapes %}
+          <tr><td class="n">{{ loop.index }}</td><td data-libelle="Je fais">{{ zone('action', s.action) }}</td><td data-libelle="Je dois voir">{{ zone('resultat_attendu', s.resultat_attendu) }}</td>
+            <td class="suppr">{% if modifiable %}<button type="button" class="croix" data-action="retirer-etape" aria-label="Retirer l'étape {{ loop.index }}">&times;</button>{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if modifiable %}<button type="button" class="lien-bouton ajout" data-action="ajouter-etape" style="color:var(--violet)">Ajouter une étape</button>{% endif %}
+    </div></div></div>
+  </article>
+  {% endfor %}
+</section>
+{% endfor %}
+</div>
+
+{% if modifiable %}
+<div class="barre-bas"><div class="interieur">
+  <span class="etat" id="etat-modifs" aria-live="polite">Aucune modification</span>
+  <button class="bouton" type="button" id="enregistrer">Enregistrer</button>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block script %}<script>QAF.cas(document.getElementById('liste-cas'), {{ 'true' if modifiable else 'false' }});</script>{% endblock %}

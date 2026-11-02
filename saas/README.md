@@ -6,22 +6,30 @@ Application web interne : les testeurs utilisent QA Factory depuis un navigateur
 
 ## Ce que fait l'application
 
-| Étape | Qui | Dans la page du projet |
-|---|---|---|
-| Créer le projet | Responsable, administrateur | Code, nom, adresse du site (facultative), ID Squash (facultatif), responsable |
-| Déposer le cahier des charges | Tous | Formats : pdf, docx, doc, odt, md, txt, xlsx, png, jpg |
-| Analyser | Tous | L'IA produit cas (techniques ISTQB), stratégie des 10 types de tests, questions, jeux de données ; suivi en direct ; les actions sensibles de l'agent demandent une confirmation dans la page |
-| Relire | Tous | En ligne, ou Excel / Word téléchargés |
-| Corriger | Tous | Renvoyer l'Excel ou le Word modifié (pris en compte immédiatement, sans IA), ou écrire une demande à l'IA ; conflit Excel/Word détecté et arbitré par un bouton |
-| Valider | Responsable du projet, administrateur | Bouton ; refusé si le contrôle signale des erreurs ou si un fichier modifié n'a pas été renvoyé |
-| Publier dans Squash | Responsable du projet, administrateur | Simulation, puis bouton de confirmation ; sans IA, avec le code du MCP squash-tm ; jamais de modification ni de suppression dans Squash, jamais de doublon |
-| Specs d'automatisation | Tous | Specs BROUILLON par fonctionnalité |
+Un parcours en quatre écrans, sans formation (règles de conception : skill `interface-qa-factory`, couleurs de Synelia) :
+
+1. **Accueil** : un seul rectangle de dépôt. Déposer le cahier des charges (un ou plusieurs fichiers : pdf, docx, doc, odt, md, txt, xlsx, png, jpg) **lance directement l'analyse** ; le projet prend le nom du fichier.
+2. **Génération** : le rectangle se remplit jusqu'à 100 %, affiche « Génération terminée » puis ouvre les fichiers produits. Si l'assistant a besoin d'un accord pour une action, une fenêtre le demande (Autoriser / Refuser).
+3. **Fichiers produits** : cas de tests, questions pour le client, jeux de données, chacun résumé en une ligne ; Excel et Word en téléchargement.
+4. **Relecture** : les cas, groupés par fonctionnalité en onglets, se lisent replié (une ligne par cas) et se modifient sur place (titre, prérequis, étapes « Je fais » / « Je dois voir »). **« Enregistrer » enregistre et valide** : la version passe dans `03-valide`, les specs d'automatisation sont générées. Il n'y a plus d'étape de validation par un responsable. « Modifier à nouveau les cas » rouvre la relecture si besoin.
+
+Puis **Envoyer dans Squash** : le numéro du projet Squash est demandé la première fois ; l'application vérifie ce qui existe, annonce ce qui sera créé (« 53 éléments… »), puis envoie après confirmation, avec une barre de progression réelle. Rien n'est jamais modifié ni supprimé dans Squash, et une relance ne crée aucun doublon.
 
 Garde-fous propres à la version serveur :
-- l'agent IA n'a **aucun** droit d'écriture dans Squash, ni d'accès web, ni d'accès hors du dépôt ; la publication passe uniquement par le bouton du responsable ;
-- toute commande système non prévue demande une confirmation dans la page, avec le nom de la personne qui l'a accordée ;
-- une seule tâche à la fois par projet ; chaque tâche affiche son coût OpenRouter (jetons et dollars) ;
-- comptes nominatifs (administrateur, responsable de projet, testeur), mots de passe hachés, mot de passe provisoire à changer à la première connexion, protection CSRF, journal d'audit.
+- l'agent IA n'a **aucun** accès à Squash (le MCP squash-tm est désactivé pour lui), ni au web, ni hors du dépôt ; l'envoi dans Squash passe uniquement par le bouton, avec le code de publication du MCP ;
+- toute commande système non prévue demande un accord dans la page, avec le nom de la personne qui l'a donné ;
+- une seule tâche à la fois par projet ; le coût OpenRouter de chaque analyse est enregistré ;
+- « Enregistrer » refuse de valider si le contrôle ISTQB signale des erreurs ;
+- comptes nominatifs, mots de passe hachés, mot de passe provisoire à changer, protection CSRF, journal d'audit (qui a validé, qui a envoyé dans Squash).
+
+### Voir l'application tout de suite (démonstration locale)
+
+Sur un poste avec Python, Node et OpenCode, depuis le dossier du dépôt :
+```bash
+pip install -r saas/requirements.txt
+python saas/dev/demo.py
+```
+Le navigateur s'ouvre sur `http://127.0.0.1:8000` ; identifiant `demo`, mot de passe `Demo-2026-qa`. Un faux modèle rejoue l'analyse de SauceDemo : déposer n'importe quel cahier des charges (par exemple `projets/saucedemo/01-entrant/cahier-des-charges.md`). Pour essayer l'envoi dans Squash, définir avant le lancement `SQUASH_MCP_DIR`, `SQUASH_TM_BASE_URL`, `SQUASH_TM_USERNAME` et `SQUASH_TM_PASSWORD`, et utiliser un projet Squash d'essai.
 
 ## Architecture
 
@@ -30,7 +38,8 @@ navigateur ──HTTPS──> [web]  application FastAPI (port 8000)
                         │  API protégée par mot de passe (réseau Docker interne)
                         v
                       [moteur]  opencode serve ──> OpenRouter (modèle imposé, clé côté serveur)
-                        │                      └─> MCP squash-tm (lecture seule pour l'agent)
+                        │
+[web] ── publier_squash.mjs ──> Squash TM (seul chemin d'écriture, sur confirmation)
 volume « projets » : projets/<code>/01-entrant … 04-livrables, partagé par les deux conteneurs
 volume « donnees » : base SQLite (comptes, tâches, audit) et clé de session
 ```
@@ -104,7 +113,9 @@ Le test de parcours lance le vrai OpenCode avec le faux modèle (`saas/dev/faux_
 
 | Fichier | Rôle |
 |---|---|
-| `app/main.py` | Pages et actions |
+| `app/main.py` | Pages et actions du parcours |
+| `app/gabarits/`, `app/statique/` | Écrans, style Synelia (police Nunito hébergée, licence OFL), comportements (`app.js`) |
+| `dev/demo.py` | Démonstration locale en une commande |
 | `app/moteur.py` | Pilotage d'`opencode serve` (sessions, commandes, confirmations, coût) |
 | `app/taches.py` | File des tâches longues (IA, publication, specs) |
 | `app/projets.py` | Opérations sur les dossiers de projets via `outils/` |

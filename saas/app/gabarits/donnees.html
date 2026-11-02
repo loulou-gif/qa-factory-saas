@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titre %}Jeux de données · {{ fiche.nom }}{% endblock %}
+{% block contenu %}
+<div class="etroit">
+<a class="retour" href="/projets/{{ code }}">Retour aux fichiers</a>
+<h1>Jeux de données</h1>
+<p class="synthese">Les données à préparer avant d'exécuter les tests. Les mots de passe ne sont jamais écrits ici.</p>
+{% for j in jeux %}
+<article class="carte">
+  <div class="entete-carte"><span class="id">{{ j.id }}</span><strong>{{ j.titre }}</strong>
+    {% if j.origine %}<span class="pastille {{ 'alerte' if 'client' in j.origine else 'neutre' }}">{{ j.origine }}</span>{% endif %}</div>
+  {% if j.cas %}<p class="discret petit">Utilisé par {{ j.cas }}</p>{% endif %}
+  {% if j.lignes %}
+  <table class="tableau"><thead><tr><th>Champ</th><th>Valeur</th><th>Remarque</th></tr></thead><tbody>
+    {% for l in j.lignes %}<tr><td>{{ l.champ }}</td><td>{{ l.valeur }}</td><td class="discret">{{ l.remarque }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+</article>
+{% endfor %}
+</div>
+{% endblock %}

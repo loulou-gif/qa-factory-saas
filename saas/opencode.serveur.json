@@ -22,6 +22,9 @@
         "--isolated"
       ],
       "enabled": false
+    },
+    "squash-tm": {
+      "enabled": false
     }
   },
   "permission": {

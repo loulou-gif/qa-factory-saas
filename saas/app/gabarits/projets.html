@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block titre %}Projets · QA Factory{% endblock %}
+{% block contenu %}
+<div class="etroit">
+  <h1 style="margin-bottom:1.5rem">Projets</h1>
+  {% if liste %}
+  <div class="recents" style="margin-top:0">
+    <ul>
+      {% for p in liste %}
+      <li><a href="/projets/{{ p.code }}"><span>{{ p.nom }}</span><span class="pastille {{ p.statut[0] }}">{{ p.statut[1] }}</span></a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p>Aucun projet pour l'instant. <a href="/">Déposez un premier cahier des charges</a>.</p>
+  {% endif %}
+  <p style="margin-top:2rem"><a class="bouton" href="/">Nouveau cahier des charges</a></p>
+</div>
+{% endblock %}

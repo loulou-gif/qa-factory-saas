@@ -1,19 +1,20 @@
 {% extends "base.html" %}
-{% block titre %}Mon compte — QA Factory{% endblock %}
+{% block titre %}Mon compte · QA Factory{% endblock %}
 {% block contenu %}
-<div class="carte" style="max-width:480px">
+<div class="boite" style="margin-top:2vh">
   <h1>Mon compte</h1>
-  <p class="sous-titre">{{ u.nom }} ({{ u.identifiant }}) — {{ ROLES[u.role] }}</p>
-  {% if u.doit_changer %}<div class="flash">Première connexion ou mot de passe réinitialisé : choisir un mot de passe personnel pour continuer.</div>{% endif %}
+  <p class="discret">{{ u.nom }} · {{ ROLES[u.role] }}</p>
+  {% if u.doit_changer %}<div class="message">Choisissez votre mot de passe personnel pour commencer.</div>{% endif %}
   <form method="post" action="/compte">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label for="a">Mot de passe actuel</label>
     <input type="password" id="a" name="actuel" autocomplete="current-password" required>
-    <label for="n">Nouveau mot de passe <span class="aide">(10 caractères au moins, lettres et chiffres)</span></label>
-    <input type="password" id="n" name="nouveau" autocomplete="new-password" required>
+    <label for="n">Nouveau mot de passe</label>
+    <input type="password" id="n" name="nouveau" autocomplete="new-password" required aria-describedby="aide-mdp">
+    <p id="aide-mdp" class="discret petit" style="margin:.35rem 0 0">10 caractères au moins, avec des lettres et des chiffres.</p>
     <label for="c">Confirmation</label>
     <input type="password" id="c" name="confirmation" autocomplete="new-password" required>
-    <div class="actions"><button type="submit">Changer le mot de passe</button></div>
+    <button class="bouton" type="submit">Enregistrer le mot de passe</button>
   </form>
 </div>
 {% endblock %}

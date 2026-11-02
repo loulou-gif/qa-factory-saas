@@ -1,32 +1,31 @@
 {% extends "base.html" %}
-{% set ETAPES = {'documents': ('Déposer le cahier des charges', ''), 'analyse': ("Lancer l'analyse", 'accent'), 'relecture': ('Relire et valider', 'alerte'), 'publication': ('Publier dans Squash', 'accent'), 'specs': ('Générer les specs', 'accent'), 'temps-b': ('Temps A terminé', 'ok')} %}
-{% block titre %}Projets — QA Factory{% endblock %}
+{% block titre %}QA Factory{% endblock %}
 {% block contenu %}
-<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
-  <div><h1>Projets</h1><p class="sous-titre">Du cahier des charges aux cas de tests validés et publiés dans Squash.</p></div>
-  {% if peut_creer %}<a class="bouton" href="/projets/nouveau">Nouveau projet</a>{% endif %}
-</div>
-{% if not moteur_ok %}<div class="flash erreur">Moteur d'analyse indisponible : {{ moteur_detail }}. Les analyses et corrections par l'IA sont impossibles ; le reste fonctionne. Prévenir l'administrateur.</div>{% endif %}
-<div class="carte tableau-defilant">
-{% if projets %}
-<table>
-  <thead><tr><th>Projet</th><th>Responsable</th><th>Prochaine étape</th><th>Analyse</th><th>Squash</th><th>Tâche en cours</th></tr></thead>
-  <tbody>
-  {% for p in projets %}
-  {% set a = p.etat.valide or p.etat.a_valider %}
-  <tr>
-    <td><a href="/projets/{{ p.code }}"><strong>{{ p.nom }}</strong></a><br><span class="discret">{{ p.code }}{% if not p.url %} · site pas encore disponible{% endif %}</span></td>
-    <td>{{ (p.db.responsable_nom if p.db else None) or '—' }}</td>
-    <td><span class="etiquette {{ ETAPES[p.etat.etape][1] }}">{{ ETAPES[p.etat.etape][0] }}</span></td>
-    <td>{% if a and not a.illisible %}v{{ a.version }} · {{ a.cas }} cas{% if a.bloquantes %} · <span class="etiquette erreur">{{ a.bloquantes|length }} question(s) bloquante(s)</span>{% endif %}{% if p.etat.valide %} · <span class="etiquette ok">validée</span>{% endif %}{% else %}—{% endif %}</td>
-    <td>{% if p.etat.publie and not p.etat.publie.illisible %}{{ p.etat.publie.cas }} cas publiés{% else %}—{% endif %}</td>
-    <td>{% if p.active %}<a href="/taches/{{ p.active.id }}">{{ TYPES[p.active.type] }}</a>{% else %}—{% endif %}</td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p>Aucun projet pour l'instant.{% if peut_creer %} <a href="/projets/nouveau">Créer le premier projet</a>.{% endif %}</p>
-{% endif %}
+<div class="accueil">
+  {% if not moteur_ok %}<div class="message erreur">L'assistant d'analyse est indisponible pour le moment. Prévenez l'administrateur de l'outil.</div>{% endif %}
+  <div class="depot" id="depot" tabindex="0" role="button" aria-label="Déposer le cahier des charges"
+       data-extensions="{{ extensions }}" {% if not moteur_ok %}aria-disabled="true"{% endif %}>
+    <div class="remplissage" aria-hidden="true"></div>
+    <svg class="icone icone-depot" viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M38 6H16a5 5 0 0 0-5 5v42a5 5 0 0 0 5 5h32a5 5 0 0 0 5-5V21z"/><path d="M38 6v15h15"/><path d="M32 47V29"/><path d="M24 36l8-8 8 8"/>
+    </svg>
+    <div class="pourcentage" aria-hidden="true">0 %</div>
+    <svg class="coche" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="34"/><path d="M22 37l10 10 19-21"/></svg>
+    <div class="phrase" aria-live="polite">Déposez ici votre cahier des charges</div>
+    <div class="aide">ou cliquez pour le choisir. PDF, Word, Markdown ou images de maquettes ; plusieurs fichiers possibles.</div>
+    <input type="file" id="choix" multiple accept=".{{ extensions.replace(',', ',.') }}">
+  </div>
+
+  {% if recents %}
+  <section class="recents">
+    <h2>Reprendre</h2>
+    <ul>
+      {% for p in recents %}
+      <li><a href="/projets/{{ p.code }}"><span>{{ p.nom }}</span><span class="pastille {{ p.statut[0] }}">{{ p.statut[1] }}</span></a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
 </div>
 {% endblock %}
+{% block script %}<script>QAF.depot(document.getElementById('depot'));</script>{% endblock %}

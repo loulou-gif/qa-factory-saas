@@ -189,3 +189,61 @@ class Gestionnaire:
 
 
 gestionnaire = Gestionnaire()
+
+
+# ---------------------------------------------------------------- progression affichée
+
+MESSAGES_ANALYSE = ((0, "Lecture du cahier des charges"), (25, "Repérage des exigences et des zones floues"),
+                    (45, "Conception des cas de tests"), (70, "Mise en forme Excel et Word"),
+                    (85, "Contrôle de cohérence"), (100, "Génération terminée"))
+
+
+def progression(t) -> dict:
+    """Pourcentage et message à afficher pour une tâche (estimation honnête : 100 % seulement à la fin réelle)."""
+    import json as _json
+    import math
+    import time
+    from datetime import datetime
+    statut = t["statut"]
+    if statut == "termine":
+        return {"pourcentage": 100, "message": "Génération terminée" if t["type"] in ("analyser", "corriger")
+                else ("Envoyé dans Squash" if t["type"] == "publier" else "Terminé")}
+    if statut in ("echec", "annule", "interrompue"):
+        dernier = (t["journal"] or [{}])[-1].get("m", "")
+        return {"pourcentage": 0, "message": dernier.replace("Échec : ", "")}
+    try:
+        debut = datetime.fromisoformat(t["debut"]).timestamp() if t["debut"] else time.time()
+    except ValueError:
+        debut = time.time()
+    ecoule = max(0.0, time.time() - debut)
+    if t["type"] in ("analyser", "corriger"):
+        p = 4 + 58 * (1 - math.exp(-ecoule / 300))
+        etapes = ((t["resultat"] or {}).get("etapes") or [])
+        p = max(p, min(62, 4 + 3 * sum(1 for e in etapes if e.get("statut") == "completed")))
+        try:
+            d = projets.dossier(t["projet"]) / "02-a-valider"
+            if (d / "cas-de-tests.json").exists():
+                p = max(p, 70)
+            if (d / "cas-de-tests.xlsx").exists():
+                p = max(p, 85)
+        except projets.ErreurProjet:
+            pass
+        if any("Contrôle" in j.get("m", "") for j in t["journal"] or []):
+            p = max(p, 95)
+        p = min(p, 97)
+        message = [m for seuil, m in MESSAGES_ANALYSE if p >= seuil][-1]
+        if statut == "attente_confirmation":
+            message = "L'assistant attend votre accord"
+        return {"pourcentage": round(p, 1), "message": message}
+    if t["type"] == "publier":
+        total = int((t["parametres"] or {}).get("a_creer") or 0)
+        fait = 0
+        try:
+            c = _json.loads((projets.dossier(t["projet"]) / "04-livrables" / "squash" / "correspondance.json").read_text(encoding="utf-8"))
+            fait = sum(len(c.get(k) or {}) for k in ("exigences", "cas_de_tests", "dossiers_exigences", "dossiers_cas"))
+            fait -= int((t["parametres"] or {}).get("deja") or 0)
+        except Exception:  # noqa: BLE001
+            pass
+        p = 3 + 94 * (max(0, fait) / total) if total else 3 + 60 * (1 - math.exp(-ecoule / 120))
+        return {"pourcentage": round(min(p, 97), 1), "message": f"Création dans Squash : {max(0, fait)} sur {total}" if total else "Envoi dans Squash"}
+    return {"pourcentage": round(min(97, 10 + 80 * (1 - math.exp(-ecoule / 10))), 1), "message": "Lecture de Squash"}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block titre %}{{ fiche.nom }} · QA Factory{% endblock %}
+{% macro chevron() %}<svg class="chevron" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5l5 5-5 5"/></svg>{% endmacro %}
+{% block contenu %}
+{% set va = e.valide %}{% set av = e.a_valider %}{% set a = av or va %}
+<div class="etroit">
+  <div class="titre-projet"><h1>{{ fiche.nom }}</h1><span class="pastille {{ p.statut[0] }}">{{ p.statut[1] }}</span></div>
+
+  {% if active and active.type in ('analyser', 'corriger') %}
+    <p class="sous-titre">L'assistant prépare vos fichiers.</p>
+    <div class="depot travail" id="depot" data-tache="{{ active.id }}" data-projet="{{ code }}">
+      <div class="remplissage" aria-hidden="true"></div>
+      <div class="pourcentage" aria-hidden="true">0 %</div>
+      <svg class="coche" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="34"/><path d="M22 37l10 10 19-21"/></svg>
+      <div class="phrase" aria-live="polite">Génération en cours</div>
+      <div class="aide">Vous pouvez quitter cette page : la génération continue.</div>
+    </div>
+
+  {% elif not a %}
+    <p class="sous-titre">La génération n'a pas abouti.</p>
+    <div class="message erreur">{{ ((echec.journal or [{}])[-1].m if echec else "Aucune analyse n'a été produite.")|replace('Échec : ', '') }}</div>
+    <p><a class="bouton" href="/">Déposer à nouveau le cahier des charges</a></p>
+
+  {% else %}
+    {% set n = data.cas_de_tests|length %}
+    <p class="sous-titre">
+      {% if av %}Relisez les cas de tests, modifiez si besoin, puis enregistrez.
+      {% elif e.publie %}Validé et envoyé dans Squash.
+      {% else %}Validé. Il reste à l'envoyer dans Squash.{% endif %}
+    </p>
+
+    <ul class="fichiers">
+      <li><a class="ligne" href="/projets/{{ code }}/cas">
+        <span class="pictogramme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span>
+        <span class="texte"><span class="nom">Cas de tests</span><span class="resume">{{ n }} cas sur {{ fonctions }} fonctionnalité{{ 's' if fonctions > 1 }}, conçus avec les techniques ISTQB</span></span>
+        {{ chevron() }}</a></li>
+      <li><a class="ligne" href="/projets/{{ code }}/questions">
+        <span class="pictogramme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12z"/><path d="M10 9.5a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.2v.5"/><path d="M12 15.5h.01"/></svg></span>
+        <span class="texte"><span class="nom">Questions pour le client</span><span class="resume">{{ questions|length }} question{{ 's' if questions|length > 1 }}{% if bloquantes %}, dont {{ bloquantes|length }} bloquante{{ 's' if bloquantes|length > 1 }}{% endif %}</span></span>
+        {% if bloquantes %}<span class="pastille alerte">À envoyer</span>{% endif %}
+        {{ chevron() }}</a></li>
+      <li><a class="ligne" href="/projets/{{ code }}/donnees">
+        <span class="pictogramme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg></span>
+        <span class="texte"><span class="nom">Jeux de données</span><span class="resume">{{ jeux }} jeu{{ 'x' if jeux > 1 }} de données à préparer</span></span>
+        {{ chevron() }}</a></li>
+    </ul>
+
+    {% if av %}
+      <div class="action-principale"><a class="bouton" href="/projets/{{ code }}/cas">Relire les cas de tests</a></div>
+    {% elif not e.publie %}
+      <div class="encadre" id="squash" data-projet="{{ code }}" data-squash="{{ squash_id or '' }}">
+        <div class="ligne-champ" data-zone="saisie">
+          {% if not squash_id %}
+          <div><label for="squash-id">Numéro du projet dans Squash</label>
+            <input type="text" id="squash-id" inputmode="numeric" placeholder="ex. 28"></div>
+          {% endif %}
+          <button class="bouton" type="button" data-action="verifier">Envoyer dans Squash</button>
+        </div>
+        <div data-zone="progression" hidden><div class="phrase-squash" aria-live="polite"></div><div class="barre"><div></div></div></div>
+      </div>
+    {% else %}
+      <div class="message ok" style="animation:none">{{ e.publie.cas }} cas et {{ e.publie.exigences }} exigences sont dans Squash{% if squash_id %} (projet n° {{ squash_id }}){% endif %}.</div>
+    {% endif %}
+
+    <p class="telechargements">Télécharger :
+      <a href="/projets/{{ code }}/telecharger/{{ dossier }}/cas-de-tests.xlsx">Excel</a> ·
+      <a href="/projets/{{ code }}/telecharger/{{ dossier }}/cas-de-tests.docx">Word</a>
+    </p>
+    {% if va %}
+    <form method="post" action="/projets/{{ code }}/rouvrir" class="petit">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="lien-bouton" type="submit">Modifier à nouveau les cas</button>
+      {% if e.publie %}<span class="discret"> (les cas déjà dans Squash n'y seront pas modifiés)</span>{% endif %}
+    </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
+{% block script %}<script>
+var d = document.getElementById('depot'); if (d) QAF.suivreTache(d, d.getAttribute('data-tache'), function () { location.reload(); });
+var s = document.getElementById('squash'); if (s) QAF.squash(s);
+</script>{% endblock %}

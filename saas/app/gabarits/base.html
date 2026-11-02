@@ -3,35 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
 <title>{% block titre %}QA Factory{% endblock %}</title>
+<link rel="preload" href="/statique/polices/nunito-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/statique/app.css">
 </head>
 <body>
 <header class="entete"><div class="interieur">
-  <a class="marque" href="/">QA Factory</a>
+  <a class="marque" href="/"><i aria-hidden="true"></i>QA Factory</a>
   {% if u %}
-  <nav>
-    <a href="/">Projets</a>
-    {% if u.role == 'admin' %}<a href="/admin/utilisateurs">Utilisateurs</a>{% endif %}
+  <nav aria-label="Navigation principale">
+    <a href="/projets" {% if request.url.path.startswith('/projets') %}aria-current="page"{% endif %}>Projets</a>
+    {% if u.role == 'admin' %}<a href="/admin/utilisateurs" {% if request.url.path.startswith('/admin') %}aria-current="page"{% endif %}>Équipe</a>{% endif %}
+    <a href="/compte" class="discret nom-utilisateur">{{ u.nom }}</a>
+    <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="lien-bouton" type="submit">Déconnexion</button></form>
   </nav>
-  <div class="moi">
-    <a href="/compte">{{ u.nom }}</a> <span class="discret" style="color:#cfe0f0">{{ ROLES[u.role] }}</span>
-    <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Déconnexion</button></form>
-  </div>
   {% endif %}
 </div></header>
 <main>
-{% for f in flashs or [] %}<div class="flash {{ f.g }}">{{ f.m }}</div>{% endfor %}
+{% for f in flashs or [] %}<div class="message {{ f.g }}" role="status">{{ f.m }}</div>{% endfor %}
 {% block contenu %}{% endblock %}
 </main>
-<script>
-document.addEventListener('submit', function (e) {
-  var m = e.target.getAttribute('data-confirmer');
-  if (m && !window.confirm(m)) { e.preventDefault(); return; }
-  var b = e.target.querySelector('button[type=submit]');
-  if (b && !e.target.hasAttribute('data-sans-blocage')) { setTimeout(function () { b.disabled = true; }, 0); }
-});
-</script>
+<script src="/statique/app.js"></script>
 {% block script %}{% endblock %}
 </body>
 </html>
