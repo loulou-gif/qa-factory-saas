@@ -32,6 +32,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -48,18 +49,34 @@ def libre(port):
         return s.connect_ex(("127.0.0.1", port)) != 0
 
 
+# Requêtes locales sans proxy : sous Windows, urllib et httpx reprennent le proxy du système
+# (souvent celui de l'entreprise), qui ne sait pas joindre 127.0.0.1.
+_SANS_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def sonder(url, auth=None):
+    """None si le service répond ; sinon la raison, pour le diagnostic."""
+    req = urllib.request.Request(url)
+    if auth:
+        import base64
+        req.add_header("Authorization", "Basic " + base64.b64encode(auth.encode()).decode())
+    try:
+        _SANS_PROXY.open(req, timeout=5)
+        return None
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return "mot de passe du moteur refusé (HTTP 401)"
+        return None  # le serveur répond : il est démarré
+    except Exception as e:  # noqa: BLE001
+        return f"{e.__class__.__name__} : {e}"
+
+
 def attendre(url, delai=90, auth=None):
     fin = time.time() + delai
     while time.time() < fin:
-        try:
-            req = urllib.request.Request(url)
-            if auth:
-                import base64
-                req.add_header("Authorization", "Basic " + base64.b64encode(auth.encode()).decode())
-            urllib.request.urlopen(req, timeout=2)
+        if sonder(url, auth) is None:
             return True
-        except Exception:
-            time.sleep(0.5)
+        time.sleep(0.5)
     return False
 
 
@@ -98,6 +115,9 @@ def main():
         "QAF_ADMIN_IDENTIFIANT": "demo", "QAF_ADMIN_NOM": "Utilisateur démo", "QAF_ADMIN_MOT_DE_PASSE": "Demo-2026-qa",
         "PYTHONUNBUFFERED": "1",
     })
+    locaux = "127.0.0.1,localhost"
+    for cle in ("NO_PROXY", "no_proxy"):
+        env[cle] = ",".join(x for x in (env.get(cle, ""), locaux) if x)
     env.setdefault("SQUASH_MCP_DIR", str(RACINE.parent / "squash-tm-mcp"))
     env.setdefault("SQUASH_TM_BASE_URL", "")
     procs = []
@@ -113,15 +133,18 @@ def main():
         print(f"Démarrage du moteur OpenCode ({opencode}, port {PORTS['moteur']})...")
         url_moteur = f"http://127.0.0.1:{PORTS['moteur']}/session/status"
         fin = time.time() + 120
-        pret = False
+        pret, raison = False, "pas encore de réponse"
         while time.time() < fin and moteur_proc.poll() is None:
-            if attendre(url_moteur, delai=2, auth="opencode:" + env["OPENCODE_SERVER_PASSWORD"]):
+            raison = sonder(url_moteur, auth="opencode:" + env["OPENCODE_SERVER_PASSWORD"])
+            if raison is None:
                 pret = True
                 break
+            time.sleep(1)
         if not pret:
             sortie.flush()
             texte = journal.read_text(encoding="utf-8", errors="replace").strip()
-            etat = f"arrêté (code {moteur_proc.returncode})" if moteur_proc.poll() is not None else "toujours sans réponse après 2 minutes"
+            etat = (f"arrêté (code {moteur_proc.returncode})" if moteur_proc.poll() is not None
+                    else f"toujours sans réponse après 2 minutes ; dernière erreur de connexion : {raison}")
             sys.exit(f"Le moteur OpenCode n'a pas démarré : {etat}.\n"
                      f"--- Messages d'OpenCode ({journal}) ---\n{texte[-3000:] or '(aucun message)'}\n---")
         procs.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", str(SAAS),

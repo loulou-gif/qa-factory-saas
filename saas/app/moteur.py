@@ -52,7 +52,9 @@ class Moteur:
     def client(self) -> httpx.Client:
         if self._client is None:
             auth = (reglages.opencode_utilisateur, reglages.opencode_mot_de_passe) if reglages.opencode_mot_de_passe else None
-            self._client = httpx.Client(base_url=reglages.opencode_url, auth=auth,
+            # Moteur local : ne pas passer par le proxy du système (Windows l'applique aussi à 127.0.0.1).
+            local = httpx.URL(reglages.opencode_url).host in ("127.0.0.1", "localhost", "::1")
+            self._client = httpx.Client(base_url=reglages.opencode_url, auth=auth, trust_env=not local,
                                         params={"directory": str(reglages.racine)}, timeout=30)
         return self._client
 
