@@ -147,8 +147,12 @@ def main():
         journal = SAAS / "donnees-demo" / "moteur.log"
         journal.parent.mkdir(parents=True, exist_ok=True)
         sortie = open(journal, "w", encoding="utf-8", errors="replace")
+        # OpenCode insère les variables {env:…} telles quelles dans opencode.json avant de le lire :
+        # un chemin Windows (C:\Users\…) ou un mot de passe avec " ou \ rend le fichier illisible.
+        # L'agent n'a de toute façon pas accès à Squash : on retire ces variables de son environnement.
+        env_moteur = {k: v for k, v in env.items() if not k.upper().startswith(("SQUASH_TM_", "SQUASH_MCP_"))}
         moteur_proc = subprocess.Popen([opencode, "serve", "--hostname", "127.0.0.1", "--port", str(PORTS["moteur"])],
-                                       cwd=RACINE, env=env, stdout=sortie, stderr=subprocess.STDOUT)
+                                       cwd=RACINE, env=env_moteur, stdout=sortie, stderr=subprocess.STDOUT)
         procs.append(moteur_proc)
         fichier_pid.write_text("\n".join(str(x.pid) for x in procs))
         print(f"Démarrage du moteur OpenCode ({opencode}, port {PORTS['moteur']})...")

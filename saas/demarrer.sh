@@ -8,6 +8,9 @@ case "$1" in
     : "${QAF_MODELE:?QAF_MODELE obligatoire (ex. openrouter/<fournisseur>/<modèle>)}"
     OPENCODE_CONFIG_CONTENT="$(python3 saas/config_moteur.py)"
     export OPENCODE_CONFIG_CONTENT
+    # L'agent n'a pas accès à Squash : on retire ses variables. OpenCode les insère telles quelles dans
+    # opencode.json avant de le lire ; un mot de passe contenant " ou \ rendrait le fichier illisible.
+    unset SQUASH_TM_API_TOKEN SQUASH_TM_USERNAME SQUASH_TM_PASSWORD SQUASH_TM_BASE_URL SQUASH_MCP_INDEX
     if [ "${QAF_MODELE#simulation/}" != "$QAF_MODELE" ]; then
       export QAF_FAUX_MODELE_URL="${QAF_FAUX_MODELE_URL:-http://127.0.0.1:4010/v1}"
       python3 saas/dev/faux_modele.py 4010 &
