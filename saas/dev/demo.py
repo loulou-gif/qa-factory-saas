@@ -104,11 +104,26 @@ def main():
     try:
         if modele == "simulation/demo":
             procs.append(subprocess.Popen([sys.executable, str(SAAS / "dev" / "faux_modele.py"), str(PORTS["modele"])], env=env))
-        procs.append(subprocess.Popen([opencode, "serve", "--port", str(PORTS["moteur"])], cwd=RACINE, env=env,
-                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-        print("Démarrage du moteur OpenCode...")
-        if not attendre(f"http://127.0.0.1:{PORTS['moteur']}/session/status", auth="opencode:" + env["OPENCODE_SERVER_PASSWORD"]):
-            sys.exit("Le moteur OpenCode n'a pas démarré.")
+        journal = SAAS / "donnees-demo" / "moteur.log"
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        sortie = open(journal, "w", encoding="utf-8", errors="replace")
+        moteur_proc = subprocess.Popen([opencode, "serve", "--hostname", "127.0.0.1", "--port", str(PORTS["moteur"])],
+                                       cwd=RACINE, env=env, stdout=sortie, stderr=subprocess.STDOUT)
+        procs.append(moteur_proc)
+        print(f"Démarrage du moteur OpenCode ({opencode}, port {PORTS['moteur']})...")
+        url_moteur = f"http://127.0.0.1:{PORTS['moteur']}/session/status"
+        fin = time.time() + 120
+        pret = False
+        while time.time() < fin and moteur_proc.poll() is None:
+            if attendre(url_moteur, delai=2, auth="opencode:" + env["OPENCODE_SERVER_PASSWORD"]):
+                pret = True
+                break
+        if not pret:
+            sortie.flush()
+            texte = journal.read_text(encoding="utf-8", errors="replace").strip()
+            etat = f"arrêté (code {moteur_proc.returncode})" if moteur_proc.poll() is not None else "toujours sans réponse après 2 minutes"
+            sys.exit(f"Le moteur OpenCode n'a pas démarré : {etat}.\n"
+                     f"--- Messages d'OpenCode ({journal}) ---\n{texte[-3000:] or '(aucun message)'}\n---")
         procs.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", str(SAAS),
                                        "--host", "127.0.0.1", "--port", str(PORTS["web"])], cwd=RACINE, env=env))
         url = f"http://127.0.0.1:{PORTS['web']}"
