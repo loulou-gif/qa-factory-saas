@@ -5,18 +5,43 @@
 <div class="etroit">
 <a class="retour" href="/projets/{{ code }}">Retour aux fichiers</a>
 <h1>Questions pour le client</h1>
-<p class="synthese">Ce que le cahier des charges ne dit pas. {{ ouvertes|length }} question{{ 's' if ouvertes|length > 1 }} sans réponse ; à envoyer au client.
-  <a href="/projets/{{ code }}/telecharger/{{ dossier }}/ambiguites.md">Télécharger la liste</a></p>
+<p class="synthese">Ce que le cahier des charges ne dit pas. <span id="nb-ouvertes">{{ ouvertes|length }}</span> question{{ 's' if ouvertes|length > 1 }} sans réponse.
+  <a href="/projets/{{ code }}/telecharger/{{ dossier }}/ambiguites.md">Télécharger la liste</a><br>
+  <span class="discret">Vous avez déjà la réponse, ou la question n'a pas lieu d'être ? Renseignez-la ici : les cas qu'elle bloquait pourront partir dans Squash.</span></p>
+
+{% if peut_integrer %}
+<form method="post" action="/projets/{{ code }}/questions-integrer" class="encadre integrer">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p>Des réponses peuvent changer le contenu des cas. L'assistant peut les reporter dans les cas concernés.</p>
+  <button class="bouton" type="submit" {% if not modifiable %}disabled{% endif %}>Mettre à jour les cas avec les réponses</button>
+</form>
+{% elif dossier == '03-valide' %}
+<p class="discret petit">Les cas étant validés, une réponse ne les modifie pas : elle débloque leur envoi dans Squash. Si une réponse change un cas, utilisez « Modifier à nouveau les cas » sur la page du projet.</p>
+{% endif %}
+
+<div id="questions" data-projet="{{ code }}">
 {% for q in questions %}
-<article class="carte">
+{% set cas = cas_par_question.get(q.id, []) %}
+<article class="carte" data-question="{{ q.id }}">
   <div class="entete-carte">
     <span class="id">{{ q.id }}</span>
     <strong>{{ q.titre }}</strong>
     <span class="pastille {{ 'alerte' if q.gravite == 'bloquante' else 'neutre' }}">{{ q.gravite|capitalize }}</span>
-    {% if q.statut != 'ouverte' %}<span class="pastille ok">{{ q.statut|capitalize }}</span>{% endif %}
+    <span class="pastille ok statut" {% if q.statut == 'ouverte' %}hidden{% endif %}>{{ q.statut|capitalize }}</span>
   </div>
   <p class="question">{{ q.question }}</p>
-  {% if q.reponse %}<p><strong>Réponse :</strong> {{ q.reponse }}</p>{% endif %}
+  {% if q.gravite == 'bloquante' and cas and q.statut == 'ouverte' %}<p class="discret petit bloque">Bloque l'envoi de {{ cas|join(', ') }}.</p>{% endif %}
+  <p class="reponse" {% if not q.reponse %}hidden{% endif %}><strong>Réponse :</strong> <span>{{ q.reponse }}</span></p>
+  {% if q.statut == 'ouverte' and modifiable %}
+  <div class="repondre">
+    <label for="r-{{ q.id }}">Réponse</label>
+    <textarea id="r-{{ q.id }}" rows="2" placeholder="La réponse du client, ou ce que l'équipe a confirmé"></textarea>
+    <div class="actions-reponse">
+      <button class="bouton" type="button" data-action="repondre">Enregistrer la réponse</button>
+      <button class="lien-bouton" type="button" data-action="faux-positif">Sans objet (faux positif)</button>
+    </div>
+  </div>
+  {% endif %}
   <details>
     <summary>Pourquoi cette question</summary>
     <dl>
@@ -29,4 +54,6 @@
 </article>
 {% endfor %}
 </div>
+</div>
 {% endblock %}
+{% block script %}<script>QAF.questions(document.getElementById('questions'));</script>{% endblock %}

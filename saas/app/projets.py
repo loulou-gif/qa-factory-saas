@@ -449,8 +449,161 @@ def jeux(code: str, dossier_nom: str) -> list:
         for l in s["corps"].splitlines():
             cols = [x.strip() for x in l.strip().strip("|").split("|")]
             if l.strip().startswith("|") and len(cols) >= 2 and not re.match(r"^:?-+:?$", cols[0]) and cols[0].lower() != "champ":
-                lignes.append({"champ": cols[0], "valeur": cols[1].strip("`"), "remarque": cols[2] if len(cols) > 2 else ""})
+                lignes.append({"champ": cols[0], "valeur": cols[1].replace("`", "").strip(), "remarque": cols[2] if len(cols) > 2 else ""})
         res.append({"id": jid, "titre": s["titre"], "type": _champ(s["corps"], "Type"), "origine": _champ(s["corps"], "Origine"),
                     "cas": _champ(s["corps"], "Cas concernés"), "sensibilite": _champ(s["corps"], "Sensibilité"),
                     "prerequis": _champ(s["corps"], "Prérequis"), "lignes": lignes})
     return res
+
+
+# ---------------------------------------------------------------- questions : réponses
+
+def _section_md(texte: str, ident: str) -> tuple:
+    """(début, fin) de la section '### <ident> — …' dans un fichier Markdown."""
+    m = re.search(rf"^###\s+{re.escape(ident)}\b.*$", texte, flags=re.M)
+    if not m:
+        raise ErreurProjet(f"{ident} introuvable.")
+    suite = re.search(r"^#{1,3}\s", texte[m.end():], flags=re.M)
+    return m.start(), (m.end() + suite.start()) if suite else len(texte)
+
+
+def _remplacer_champ(section: str, nom: str, valeur: str) -> str:
+    ligne = f"- **{nom}** : {valeur}".rstrip()
+    motif = rf"^[ \t]*-[ \t]*\*\*{nom}\*\*[ \t]*:.*$"
+    if re.search(motif, section, flags=re.M | re.I):
+        return re.sub(motif, lambda _: ligne, section, count=1, flags=re.M | re.I)
+    return section.rstrip("\n") + "\n" + ligne + "\n\n"
+
+
+def repondre_question(code: str, qid: str, reponse: str, faux_positif: bool, auteur: str) -> str:
+    """Enregistre la réponse à une question (ou la classe en faux positif) dans ambiguites.md.
+    Une question répondue ou close ne bloque plus les cas qui en dépendaient."""
+    if not re.fullmatch(r"Q-\d{3,}", qid or ""):
+        raise ErreurProjet("Question inconnue.")
+    reponse = " ".join((reponse or "").split())
+    if not faux_positif and not reponse:
+        raise ErreurProjet("Écrivez la réponse, ou indiquez que la question est sans objet.")
+    e = etat(code)
+    nom_dossier = "02-a-valider" if e["a_valider"] else "03-valide"
+    f = dossier(code) / nom_dossier / "ambiguites.md"
+    if not f.exists():
+        raise ErreurProjet("Pas de questions pour ce projet.")
+    texte = f.read_text(encoding="utf-8")
+    debut, fin = _section_md(texte, qid)
+    from datetime import date
+    signature = f"({auteur}, {date.today():%d/%m/%Y})"
+    if faux_positif:
+        valeur, statut = f"Sans objet : faux positif{(' — ' + reponse) if reponse else ''} {signature}", "close"
+    else:
+        valeur, statut = f"{reponse} {signature}", "répondue"
+    section = _remplacer_champ(_remplacer_champ(texte[debut:fin], "Réponse", valeur), "Statut", statut)
+    f.write_text(texte[:debut] + section + texte[fin:], encoding="utf-8")
+    journaliser(code, "réponse", f"{qid} : {statut} par {auteur}", [f"{nom_dossier}/ambiguites.md"])
+    return statut
+
+
+def cas_bloques(code: str, nom_dossier: str) -> dict:
+    """{CT…: [Q…]} : cas suspendus à une question bloquante encore ouverte."""
+    data = charger_cas(code, nom_dossier) or {}
+    ouvertes = {q["id"] for q in questions(code, nom_dossier) if q["statut"] == "ouverte" and q["gravite"] == "bloquante"}
+    res = {}
+    for c in data.get("cas_de_tests", []):
+        qs = sorted(set(c.get("questions") or []) & ouvertes)
+        if qs:
+            res[c["id"]] = qs
+    return res
+
+
+# ---------------------------------------------------------------- jeux de données : modification
+
+def enregistrer_jeux(code: str, modifications: list, auteur: str) -> int:
+    """modifications = [{id: JDD-…, lignes: [{champ, valeur, remarque}]}] : réécrit le tableau de chaque jeu."""
+    e = etat(code)
+    nom_dossier = "02-a-valider" if e["a_valider"] else "03-valide"
+    f = dossier(code) / nom_dossier / "jeux-de-donnees.md"
+    if not f.exists():
+        raise ErreurProjet("Pas de jeux de données pour ce projet.")
+    texte = f.read_text(encoding="utf-8")
+    nettoyer = lambda v: " ".join(str(v or "").replace("|", "/").split())  # noqa: E731
+    n = 0
+    for m in modifications or []:
+        jid = m.get("id") or ""
+        if not re.fullmatch(r"JDD-\d{3,}", jid):
+            raise ErreurProjet("Jeu de données inconnu.")
+        lignes = [{k: nettoyer(l.get(k)) for k in ("champ", "valeur", "remarque")} for l in m.get("lignes") or []]
+        lignes = [l for l in lignes if l["champ"]]
+        if not lignes:
+            raise ErreurProjet(f"{jid} : au moins un champ est nécessaire.")
+        if len({l["champ"].lower() for l in lignes}) != len(lignes):
+            raise ErreurProjet(f"{jid} : deux champs portent le même nom.")
+        debut, fin = _section_md(texte, jid)
+        section = texte[debut:fin]
+        tableau = "| Champ | Valeur | Remarque |\n|---|---|---|\n" + "".join(
+            f"| {l['champ']} | {('`' + l['valeur'] + '`') if l['valeur'] and not l['valeur'].startswith('variable ') else l['valeur']} | {l['remarque']} |\n"
+            for l in lignes)
+        bloc = re.search(r"(^\|.*\|\s*\n?)+", section, flags=re.M)
+        if bloc:
+            section = section[:bloc.start()] + tableau + section[bloc.end():]
+        else:
+            section = section.rstrip("\n") + "\n\n" + tableau
+        if not section.endswith("\n\n"):
+            section = section.rstrip("\n") + "\n\n"
+        texte = texte[:debut] + section + texte[fin:]
+        n += 1
+    f.write_text(texte.rstrip("\n") + "\n", encoding="utf-8")
+    journaliser(code, "jeux de données", f"{n} jeu(x) modifié(s) par {auteur}", [f"{nom_dossier}/jeux-de-donnees.md"])
+    return n
+
+
+# ---------------------------------------------------------------- publication Squash : préparation
+
+def nom_parametre(champ: str) -> str:
+    """Nom de paramètre accepté par Squash (lettres, chiffres, _ et -)."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", champ).encode("ascii", "ignore").decode("ascii")
+    return (re.sub(r"[^A-Za-z0-9_-]+", "_", t).strip("_") or "parametre")[:255]
+
+
+def preparer_publication(code: str) -> dict:
+    """Fichier réellement envoyé à Squash, tiré de 03-valide :
+    - sans les cas suspendus à une question bloquante ouverte (ils partiront quand elle sera répondue) ;
+    - chaque jeu de données porte son nom complet et ses paramètres ; le prérequis du cas les cite
+      (${paramètre}), pour que Squash affiche les valeurs du jeu choisi à l'exécution.
+    Les jeux et leurs valeurs vont dans jeux-squash.json, que le module Squash utilise pour les renseigner."""
+    from qa_commun import empreinte  # noqa: F401  (même module que l'empreinte de publication)
+    d = dossier(code)
+    data = charger_cas(code, "03-valide")
+    if not data:
+        raise ErreurProjet("Rien de validé à publier (03-valide est vide).")
+    bloques = cas_bloques(code, "03-valide")
+    jeux_liste = {j["id"]: j for j in jeux(code, "03-valide")}
+    noms = {jid: f"{jid} {j['titre']}"[:255] for jid, j in jeux_liste.items()}
+    publies, jeux_squash = [], []
+    for c in data["cas_de_tests"]:
+        if c["id"] in bloques:
+            continue
+        c = dict(c)
+        refs = [r for r in (c.get("jeux_de_donnees") or []) if r in jeux_liste]
+        if refs:
+            params = []
+            for r in refs:
+                for l in jeux_liste[r]["lignes"]:
+                    p = nom_parametre(l["champ"])
+                    if p not in [x[0] for x in params]:
+                        params.append((p, l["champ"]))
+            mention = "Données (jeu choisi à l'exécution) : " + ", ".join(f"{champ} = ${{{p}}}" for p, champ in params)
+            c["prerequis"] = ((c.get("prerequis") or "").rstrip() + "\n" + mention).strip()
+            c["jeux_de_donnees"] = [noms[r] for r in refs]
+            for r in refs:
+                jeux_squash.append({"cas": c["id"], "nom": noms[r],
+                                    "parametres": [{"nom": nom_parametre(l["champ"]), "valeur": l["valeur"]} for l in jeux_liste[r]["lignes"]]})
+        else:
+            c.pop("jeux_de_donnees", None)
+        publies.append(c)
+    sortie = dict(data, cas_de_tests=publies)
+    dossier_squash = d / "04-livrables" / "squash"
+    dossier_squash.mkdir(parents=True, exist_ok=True)
+    fpub, fjeux = dossier_squash / "publication.json", dossier_squash / "jeux-squash.json"
+    fpub.write_text(json.dumps(sortie, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    fjeux.write_text(json.dumps(jeux_squash, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"fichier": fpub, "jeux": fjeux, "exclus": bloques, "nb_cas": len(publies), "nb_jeux": len(jeux_squash)}

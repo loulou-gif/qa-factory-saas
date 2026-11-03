@@ -8,6 +8,8 @@ Lancement : uvicorn app.main:app --app-dir saas --host 0.0.0.0 --port 8000
 """
 import json
 import os
+import re
+import subprocess
 from collections import Counter
 from contextlib import asynccontextmanager
 from typing import List
@@ -23,7 +25,7 @@ from .config import ICI, reglages
 from .db import STATUTS_ACTIFS, Base, maintenant
 from .moteur import ErreurMoteur, moteur
 from .securite import ROLES, controler_csrf, hacher, jeton_csrf, mot_de_passe_valable, verifier
-from .taches import ErreurTache, gestionnaire, progression
+from .taches import ErreurTache, expliquer_erreur_squash, gestionnaire, progression
 
 reglages.preparer()
 import vues_cas  # noqa: E402  (outils/ est ajouté au chemin par reglages.preparer)
@@ -115,6 +117,20 @@ def exiger_projet(code):
 def dossier_lecture(code):
     e = projets.etat(code)
     return ("02-a-valider" if e["a_valider"] else "03-valide"), e
+
+
+def a_envoyer(code, e) -> int:
+    """Cas validés, non suspendus à une question bloquante, pas encore dans Squash."""
+    if not e["valide"] or e["a_valider"]:
+        return 0
+    data = projets.charger_cas(code, "03-valide") or {}
+    bloques = projets.cas_bloques(code, "03-valide")
+    try:
+        corr = json.loads((projets.dossier(code) / "04-livrables" / "squash" / "correspondance.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        corr = {}
+    deja = set((corr.get("cas_de_tests") or {}).keys())
+    return sum(1 for c in data.get("cas_de_tests", []) if c["id"] not in bloques and c["id"] not in deja)
 
 
 def derniere_tache(code, type_):
@@ -271,7 +287,8 @@ def tache_progression(request: Request, tid: int):
                "pourcentage": p["pourcentage"], "message": p["message"], "attente": t["attente"] or [],
                "erreur": p["message"] if t["statut"] in ("echec", "interrompue", "annule") else ""}
     if t["type"] == "publier-simulation" and t["statut"] == "termine":
-        reponse["simulation"] = {"projet": r.get("projet"), "resume": r.get("resume")}
+        reponse["simulation"] = {"projet": r.get("projet"), "resume": r.get("resume"), "jeux": r.get("jeux") or {},
+                                 "exclus": len(r.get("exclus") or {})}
     if t["type"] == "publier" and t["statut"] == "termine":
         reponse["crees"] = len(r.get("crees") or [])
     return reponse
@@ -346,7 +363,11 @@ def fichiers_page(request: Request, code: str):
                 questions=qs, bloquantes=[q for q in qs if q["statut"] == "ouverte" and q["gravite"] == "bloquante"],
                 jeux=len(projets.jeux(code, nom_dossier)) if analyse else 0, active=active,
                 echec=derniere_tache(code, "analyser") if not analyse and not active else None,
-                squash_id=(projets.fiche(code).get("squash") or {}).get("projet_id"))
+                squash_id=(projets.fiche(code).get("squash") or {}).get("projet_id"),
+                squash_nom=(projets.fiche(code).get("squash") or {}).get("projet_nom") or "",
+                url_application=(projets.fiche(code).get("application") or {}).get("url") or "",
+                bloques=len(projets.cas_bloques(code, "03-valide")) if e["valide"] and not e["a_valider"] else 0,
+                a_envoyer=a_envoyer(code, e))
 
 
 @app.get("/projets/{code}/cas", response_class=HTMLResponse)
@@ -424,18 +445,78 @@ def rouvrir(request: Request, code: str, csrf: str = Form("")):
 def questions_page(request: Request, code: str):
     u = utilisateur(request)
     exiger_projet(code)
+    nom_dossier, e = dossier_lecture(code)
+    qs = projets.questions(code, nom_dossier)
+    data = projets.charger_cas(code, nom_dossier) or {}
+    cas_par_question = {}
+    for c in data.get("cas_de_tests", []):
+        for q in c.get("questions") or []:
+            cas_par_question.setdefault(q, []).append(c["id"])
+    repondues = [q for q in qs if q["statut"] in ("répondue", "repondue")]
+    return page(request, "questions.html", u=u, code=code, fiche=projets.fiche(code), dossier=nom_dossier, questions=qs,
+                cas_par_question=cas_par_question, modifiable=not gestionnaire.active(code),
+                peut_integrer=bool(repondues) and nom_dossier == "02-a-valider")
+
+
+@app.post("/projets/{code}/questions/{qid}")
+async def question_repondre(request: Request, code: str, qid: str):
+    corps = await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    if gestionnaire.active(code):
+        raise HTTPException(409, "Une tâche est en cours sur ce projet : attendez sa fin.")
+    try:
+        statut = projets.repondre_question(code, qid, corps.get("reponse") or "", bool(corps.get("faux_positif")), u["nom"])
+    except projets.ErreurProjet as ex:
+        raise HTTPException(400, str(ex))
+    base.auditer(u["id"], code, "reponse-question", f"{qid} : {statut}")
     nom_dossier, _ = dossier_lecture(code)
-    return page(request, "questions.html", u=u, code=code, fiche=projets.fiche(code), dossier=nom_dossier,
-                questions=projets.questions(code, nom_dossier))
+    return {"ok": True, "statut": statut, "bloques": len(projets.cas_bloques(code, nom_dossier))}
+
+
+@app.post("/projets/{code}/questions-integrer")
+def questions_integrer(request: Request, code: str, csrf: str = Form("")):
+    """Fait intégrer par l'assistant les réponses apportées aux questions dans les cas concernés."""
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    qs = [q for q in projets.questions(code, "02-a-valider") if q["statut"] in ("répondue", "repondue")]
+    if not qs:
+        flash(request, "Aucune réponse à intégrer.", "erreur")
+        return RedirectResponse(f"/projets/{code}/questions", status_code=303)
+    demande = ("Intégrer dans les cas de tests concernés les réponses apportées aux questions "
+               + ", ".join(q["id"] for q in qs)
+               + " (champ Réponse de ambiguites.md). Ne modifier que ce que ces réponses changent ; ne rien inventer.")
+    try:
+        gestionnaire.soumettre(code, "corriger", u, {"demande": demande})
+        base.auditer(u["id"], code, "integration-reponses", ", ".join(q["id"] for q in qs))
+    except ErreurTache as ex:
+        flash(request, str(ex), "erreur")
+    return RedirectResponse(f"/projets/{code}", status_code=303)
 
 
 @app.get("/projets/{code}/donnees", response_class=HTMLResponse)
 def donnees_page(request: Request, code: str):
     u = utilisateur(request)
     exiger_projet(code)
-    nom_dossier, _ = dossier_lecture(code)
+    nom_dossier, e = dossier_lecture(code)
     return page(request, "donnees.html", u=u, code=code, fiche=projets.fiche(code), dossier=nom_dossier,
-                jeux=projets.jeux(code, nom_dossier))
+                jeux=projets.jeux(code, nom_dossier), modifiable=not gestionnaire.active(code), publie=bool(e["publie"]))
+
+
+@app.post("/projets/{code}/donnees")
+async def donnees_enregistrer(request: Request, code: str):
+    corps = await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    if gestionnaire.active(code):
+        raise HTTPException(409, "Une tâche est en cours sur ce projet : attendez sa fin.")
+    try:
+        n = projets.enregistrer_jeux(code, corps.get("modifications") or [], u["nom"])
+    except projets.ErreurProjet as ex:
+        raise HTTPException(400, str(ex))
+    base.auditer(u["id"], code, "jeux-de-donnees", f"{n} jeu(x)")
+    return {"ok": True, "n": n}
 
 
 @app.get("/projets/{code}/telecharger/{chemin:path}")
@@ -452,6 +533,25 @@ def telecharger(request: Request, code: str, chemin: str):
 
 # ---------------------------------------------------------------- Squash
 
+@app.get("/projets/{code}/squash/projets")
+def squash_projets(request: Request, code: str):
+    """Projets Squash visibles par le compte de service, pour les choisir par leur nom."""
+    utilisateur(request)
+    exiger_projet(code)
+    if not reglages.squash_mcp_dir or not reglages.squash_url:
+        raise HTTPException(503, "Squash n'est pas configuré sur le serveur (SQUASH_MCP_DIR, SQUASH_TM_BASE_URL).")
+    try:
+        r = subprocess.run(["node", str(reglages.racine / "saas" / "publier_squash.mjs"), "--lister-projets"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90,
+                           env=dict(os.environ, SQUASH_MCP_DIR=reglages.squash_mcp_dir))
+        res = json.loads(r.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError) as ex:
+        raise HTTPException(502, f"Squash ne répond pas : {ex.__class__.__name__}.")
+    if res.get("erreurs"):
+        raise HTTPException(502, expliquer_erreur_squash(res["erreurs"]))
+    return {"projets": res.get("projets") or []}
+
+
 @app.post("/projets/{code}/squash/simuler")
 async def squash_simuler(request: Request, code: str):
     corps = await json_controle(request)
@@ -459,10 +559,18 @@ async def squash_simuler(request: Request, code: str):
     exiger_projet(code)
     sid = str(corps.get("squash_id") or "").strip()
     fiche = projets.fiche(code)
+    url = (corps.get("url") or "").strip()
+    if url:
+        if not re.match(r"^https?://[^\s/]+", url):
+            raise HTTPException(400, "Le lien de l'application doit commencer par http:// ou https://.")
+        fiche.setdefault("application", {})["url"] = url[:500]
+        projets.ecrire_fiche(code, fiche)
     if sid:
         if not sid.isdigit():
-            raise HTTPException(400, "Le numéro du projet Squash est un nombre (il figure dans l'adresse du projet dans Squash).")
+            raise HTTPException(400, "Choisissez le projet Squash dans la liste.")
         fiche.setdefault("squash", {})["projet_id"] = int(sid)
+        if corps.get("squash_nom"):
+            fiche["squash"]["projet_nom"] = str(corps["squash_nom"])[:200]
         projets.ecrire_fiche(code, fiche)
         # Le fichier validé doit viser le même projet Squash.
         f = projets.dossier(code) / "03-valide" / "cas-de-tests.json"
@@ -473,7 +581,7 @@ async def squash_simuler(request: Request, code: str):
                 f.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 projets.script("rendre_revue.py", code, "--dossier", "03-valide", "--forcer")
     if not (fiche.get("squash") or {}).get("projet_id"):
-        raise HTTPException(400, "Indiquez le numéro du projet dans Squash.")
+        raise HTTPException(400, "Choisissez le projet Squash.")
     try:
         tid = gestionnaire.soumettre(code, "publier-simulation", u)
     except ErreurTache as e:

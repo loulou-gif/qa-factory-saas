@@ -4,18 +4,38 @@
 <div class="etroit">
 <a class="retour" href="/projets/{{ code }}">Retour aux fichiers</a>
 <h1>Jeux de données</h1>
-<p class="synthese">Les données à préparer avant d'exécuter les tests. Les mots de passe ne sont jamais écrits ici.</p>
+<p class="synthese">Les données à préparer avant d'exécuter les tests. Elles partent dans Squash avec les cas : chaque jeu devient un jeu de données du cas, ses champs des paramètres.
+  <br><span class="discret">Pas de mot de passe réel ici : écrivez « variable NOM_DE_LA_VARIABLE ».{% if publie %} Dans Squash, un jeu déjà renseigné n'est jamais modifié ; seuls les jeux encore vides y sont complétés.{% endif %}</span></p>
+<div id="jeux" data-projet="{{ code }}">
 {% for j in jeux %}
-<article class="carte">
+<article class="carte" data-jeu="{{ j.id }}">
   <div class="entete-carte"><span class="id">{{ j.id }}</span><strong>{{ j.titre }}</strong>
     {% if j.origine %}<span class="pastille {{ 'alerte' if 'client' in j.origine else 'neutre' }}">{{ j.origine }}</span>{% endif %}</div>
   {% if j.cas %}<p class="discret petit">Utilisé par {{ j.cas }}</p>{% endif %}
-  {% if j.lignes %}
-  <table class="tableau"><thead><tr><th>Champ</th><th>Valeur</th><th>Remarque</th></tr></thead><tbody>
-    {% for l in j.lignes %}<tr><td>{{ l.champ }}</td><td>{{ l.valeur }}</td><td class="discret">{{ l.remarque }}</td></tr>{% endfor %}
+  <table class="tableau jeu"><thead><tr><th>Champ</th><th>Valeur</th><th>Remarque</th>{% if modifiable %}<th></th>{% endif %}</tr></thead><tbody>
+    {% for l in j.lignes %}
+    <tr>
+      {% if modifiable %}
+      <td data-libelle="Champ"><input type="text" data-champ="champ" value="{{ l.champ }}" aria-label="Champ"></td>
+      <td data-libelle="Valeur"><input type="text" data-champ="valeur" value="{{ l.valeur }}" aria-label="Valeur de {{ l.champ }}"></td>
+      <td data-libelle="Remarque"><input type="text" data-champ="remarque" value="{{ l.remarque }}" aria-label="Remarque"></td>
+      <td class="suppr"><button type="button" class="croix" data-action="retirer-ligne" aria-label="Retirer {{ l.champ }}">&times;</button></td>
+      {% else %}
+      <td>{{ l.champ }}</td><td>{{ l.valeur }}</td><td class="discret">{{ l.remarque }}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
   </tbody></table>
-  {% endif %}
+  {% if modifiable %}<button type="button" class="lien-bouton ajout" data-action="ajouter-ligne" style="color:var(--violet)">Ajouter un champ</button>{% endif %}
 </article>
 {% endfor %}
 </div>
+</div>
+{% if modifiable and jeux %}
+<div class="barre-bas"><div class="interieur">
+  <span class="etat" id="etat-jeux" aria-live="polite">Aucune modification</span>
+  <button class="bouton" type="button" id="enregistrer-jeux">Enregistrer</button>
+</div></div>
+{% endif %}
 {% endblock %}
+{% block script %}<script>QAF.jeux(document.getElementById('jeux'));</script>{% endblock %}

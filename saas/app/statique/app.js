@@ -289,12 +289,37 @@
     var projet = cadre.getAttribute('data-projet');
     var saisie = cadre.querySelector('[data-zone=saisie]'), prog = cadre.querySelector('[data-zone=progression]');
     var phrase = prog.querySelector('.phrase-squash'), barre = prog.querySelector('.barre div');
+    var choix = cadre.querySelector('#squash-projet'), filtre = cadre.querySelector('#squash-filtre');
+    var actuel = cadre.querySelector('#squash-actuel'), tous = [];
     function montrer(texte, p) { saisie.hidden = true; prog.hidden = false; phrase.textContent = texte; barre.style.width = p + '%'; }
     function erreur(m) {
       prog.hidden = true; saisie.hidden = false;
       var ancien = cadre.querySelector('.message'); if (ancien) ancien.remove();
       cadre.insertBefore(el('div', { 'class': 'message erreur', texte: m }), cadre.firstChild);
-      var b = saisie.querySelector('button'); if (b) b.disabled = false;
+      var b = saisie.querySelector('[data-action=verifier]'); if (b) b.disabled = false;
+    }
+    function remplir(liste) {
+      var garde = choix.value || (actuel ? actuel.value : '');
+      choix.innerHTML = '';
+      choix.appendChild(el('option', { value: '', texte: liste.length ? 'Choisir le projet…' : 'Aucun projet trouvé' }));
+      liste.forEach(function (p) { var o = el('option', { value: String(p.id), texte: p.nom }); if (String(p.id) === garde) o.selected = true; choix.appendChild(o); });
+    }
+    if (choix) {
+      api('/projets/' + projet + '/squash/projets').then(function (d) {
+        tous = d.projets || [];
+        choix.disabled = false; remplir(tous);
+        if (tous.length > 8) filtre.hidden = false;
+      }).catch(function (e) {
+        // Liste indisponible : on garde la saisie du numéro, comme avant.
+        var champ = el('input', { type: 'text', id: 'squash-numero', inputmode: 'numeric', placeholder: 'Numéro du projet Squash, ex. 28' });
+        if (actuel) champ.value = actuel.value;
+        choix.replaceWith(champ); choix = null;
+        cadre.insertBefore(el('div', { 'class': 'message alerte', texte: 'Liste des projets Squash indisponible (' + e.message + ') : indiquez le numéro du projet.' }), cadre.firstChild);
+      });
+      filtre.addEventListener('input', function () {
+        var t = filtre.value.trim().toLowerCase();
+        remplir(tous.filter(function (p) { return !t || p.nom.toLowerCase().indexOf(t) >= 0; }));
+      });
     }
     function suivre(tid, auFini) {
       api('/taches/' + tid + '/progression').then(function (d) {
@@ -305,19 +330,28 @@
       }).catch(function (e) { erreur(e.message); });
     }
     cadre.querySelector('[data-action=verifier]').addEventListener('click', function (ev) {
-      var champ = cadre.querySelector('#squash-id');
+      var corps = { url: (cadre.querySelector('#squash-url') || {}).value || '' };
+      var numero = cadre.querySelector('#squash-numero');
+      if (choix) {
+        if (!choix.value) return erreur('Choisissez le projet Squash dans la liste.');
+        corps.squash_id = choix.value; corps.squash_nom = choix.options[choix.selectedIndex].textContent;
+      } else if (numero) {
+        corps.squash_id = numero.value.trim();
+      }
       ev.target.disabled = true;
       montrer('Vérification de ce qui existe déjà dans Squash', 8);
-      api('/projets/' + projet + '/squash/simuler', { squash_id: champ ? champ.value.trim() : '' }).then(function (r) {
+      api('/projets/' + projet + '/squash/simuler', corps).then(function (r) {
         suivre(r.tache, function (d) {
           var s = d.simulation || {}, res = s.resume || {}, n = (res.creer || 0) + (res.recreer || 0), pr = s.projet || {};
+          var jeux = s.jeux || {}, nJeux = (jeux.a_creer || 0) + (jeux.a_completer || 0);
           montrer('Vérification terminée', 100);
-          if (!n) { phrase.textContent = 'Tout est déjà dans Squash.'; return setTimeout(function () { location.reload(); }, 1200); }
-          var minutes = Math.max(1, Math.ceil(n * 15 / 60));
-          dialogue('Envoyer dans Squash ?', [
-            el('p', { texte: n + ' éléments (exigences, cas de tests et dossiers) seront créés dans le projet Squash « ' + (pr.nom || '?') + ' » (n° ' + (pr.id || '?') + ').' }),
-            el('p', { 'class': 'discret', texte: 'Rien de ce qui existe dans Squash ne sera modifié ni supprimé. Durée estimée : ' + minutes + ' min.' })
-          ], [{ libelle: 'Annuler', valeur: false }, { libelle: 'Envoyer', valeur: true, principal: true }]).then(function (ok) {
+          if (!n && !nJeux) { phrase.textContent = 'Tout est déjà dans Squash.'; return setTimeout(function () { location.reload(); }, 1200); }
+          var minutes = Math.max(1, Math.ceil((n + nJeux) * 15 / 60));
+          var lignes = [el('p', { texte: (n ? n + ' éléments (exigences, cas de tests et dossiers) seront créés' : 'Aucun nouveau cas à créer') + ' dans le projet Squash « ' + (pr.nom || '?') + ' ».' })];
+          if (nJeux) lignes.push(el('p', { texte: nJeux + ' jeu' + (nJeux > 1 ? 'x' : '') + ' de données ' + (nJeux > 1 ? 'seront renseignés' : 'sera renseigné') + ' sur les cas.' }));
+          if (s.exclus) lignes.push(el('p', { 'class': 'discret', texte: s.exclus + ' cas en attente d\'une réponse bloquante ne sont pas envoyés.' }));
+          lignes.push(el('p', { 'class': 'discret', texte: 'Rien de ce qui existe dans Squash ne sera modifié ni supprimé. Durée estimée : ' + minutes + ' min.' }));
+          dialogue('Envoyer dans Squash ?', lignes, [{ libelle: 'Annuler', valeur: false }, { libelle: 'Envoyer', valeur: true, principal: true }]).then(function (ok) {
             if (!ok) { prog.hidden = true; saisie.hidden = false; ev.target.disabled = false; return; }
             montrer('Envoi dans Squash', 3);
             api('/projets/' + projet + '/squash/publier', { simulation: r.tache }).then(function (p) {
@@ -332,5 +366,82 @@
     });
   }
 
-  window.QAF = { depot: depot, suivreTache: suivreTache, cas: cas, squash: squash };
+  /* ---------- questions : réponses et faux positifs ---------- */
+  function questions(conteneur) {
+    if (!conteneur) return;
+    var projet = conteneur.getAttribute('data-projet');
+    conteneur.querySelectorAll('article[data-question]').forEach(function (carte) {
+      var zone = carte.querySelector('.repondre'); if (!zone) return;
+      var qid = carte.getAttribute('data-question'), texte = zone.querySelector('textarea');
+      function envoyer(fauxPositif, bouton) {
+        var ancien = carte.querySelector('.message'); if (ancien) ancien.remove();
+        if (!fauxPositif && !texte.value.trim()) { texte.focus(); return; }
+        bouton.disabled = true;
+        api('/projets/' + projet + '/questions/' + qid, { reponse: texte.value, faux_positif: fauxPositif }).then(function (d) {
+          var rep = carte.querySelector('.reponse');
+          rep.querySelector('span').textContent = fauxPositif ? 'Sans objet (faux positif)' + (texte.value.trim() ? ' — ' + texte.value.trim() : '') : texte.value.trim();
+          rep.hidden = false;
+          var st = carte.querySelector('.statut'); st.textContent = d.statut.charAt(0).toUpperCase() + d.statut.slice(1); st.hidden = false;
+          var bl = carte.querySelector('.bloque'); if (bl) bl.remove();
+          zone.remove();
+          var nb = document.getElementById('nb-ouvertes'); if (nb) nb.textContent = Math.max(0, parseInt(nb.textContent, 10) - 1);
+          carte.classList.add('repondue');
+        }).catch(function (e) {
+          bouton.disabled = false;
+          zone.appendChild(el('div', { 'class': 'message erreur', texte: e.message }));
+        });
+      }
+      zone.querySelector('[data-action=repondre]').addEventListener('click', function (e) { envoyer(false, e.target); });
+      zone.querySelector('[data-action=faux-positif]').addEventListener('click', function (e) { envoyer(true, e.target); });
+    });
+  }
+
+  /* ---------- jeux de données : modification ---------- */
+  function jeux(conteneur) {
+    if (!conteneur) return;
+    var projet = conteneur.getAttribute('data-projet'), bouton = document.getElementById('enregistrer-jeux'), etat = document.getElementById('etat-jeux');
+    if (!bouton) return;
+    var modifies = {};
+    function marquer(carte) {
+      modifies[carte.getAttribute('data-jeu')] = true;
+      var n = Object.keys(modifies).length;
+      etat.textContent = n + ' jeu' + (n > 1 ? 'x' : '') + ' modifié' + (n > 1 ? 's' : '');
+      etat.classList.add('change');
+    }
+    function ligne() {
+      var tr = el('tr', {}, [
+        el('td', { 'data-libelle': 'Champ' }, [el('input', { type: 'text', 'data-champ': 'champ', 'aria-label': 'Champ' })]),
+        el('td', { 'data-libelle': 'Valeur' }, [el('input', { type: 'text', 'data-champ': 'valeur', 'aria-label': 'Valeur' })]),
+        el('td', { 'data-libelle': 'Remarque' }, [el('input', { type: 'text', 'data-champ': 'remarque', 'aria-label': 'Remarque' })]),
+        el('td', { 'class': 'suppr' }, [el('button', { type: 'button', 'class': 'croix', 'data-action': 'retirer-ligne', 'aria-label': 'Retirer ce champ', texte: '×' })])
+      ]);
+      return tr;
+    }
+    conteneur.addEventListener('input', function (e) { var c = e.target.closest('article[data-jeu]'); if (c) marquer(c); });
+    conteneur.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-action]'); if (!b) return;
+      var carte = b.closest('article[data-jeu]');
+      if (b.getAttribute('data-action') === 'retirer-ligne') { b.closest('tr').remove(); marquer(carte); }
+      if (b.getAttribute('data-action') === 'ajouter-ligne') { var tr = ligne(); carte.querySelector('tbody').appendChild(tr); tr.querySelector('input').focus(); marquer(carte); }
+    });
+    bouton.addEventListener('click', function () {
+      var ids = Object.keys(modifies);
+      if (!ids.length) { etat.textContent = 'Aucune modification'; return; }
+      var modifications = ids.map(function (id) {
+        var carte = conteneur.querySelector('article[data-jeu="' + id + '"]');
+        return { id: id, lignes: Array.prototype.map.call(carte.querySelectorAll('tbody tr'), function (tr) {
+          var v = function (k) { var i = tr.querySelector('[data-champ=' + k + ']'); return i ? i.value : ''; };
+          return { champ: v('champ'), valeur: v('valeur'), remarque: v('remarque') };
+        }) };
+      });
+      bouton.disabled = true; etat.textContent = 'Enregistrement…';
+      api('/projets/' + projet + '/donnees', { modifications: modifications }).then(function (d) {
+        modifies = {}; bouton.disabled = false; etat.classList.remove('change');
+        etat.textContent = 'Enregistré (' + d.n + ' jeu' + (d.n > 1 ? 'x' : '') + ')';
+      }).catch(function (e) { bouton.disabled = false; etat.textContent = e.message; });
+    });
+    window.addEventListener('beforeunload', function (e) { if (Object.keys(modifies).length) { e.preventDefault(); e.returnValue = ''; } });
+  }
+
+  window.QAF = { depot: depot, suivreTache: suivreTache, cas: cas, squash: squash, questions: questions, jeux: jeux };
 })();

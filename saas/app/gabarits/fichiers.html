@@ -51,19 +51,33 @@
 
     {% if av %}
       <div class="action-principale"><a class="bouton" href="/projets/{{ code }}/cas">Relire les cas de tests</a></div>
-    {% elif not e.publie %}
+    {% else %}
+      {% if bloques %}
+      <div class="message alerte" style="animation:none">{{ bloques }} cas attendent la réponse à une question bloquante : ils ne partiront dans Squash qu'une fois la question répondue ou classée sans objet. <a href="/projets/{{ code }}/questions">Répondre aux questions</a></div>
+      {% endif %}
+      {% if e.publie %}
+      <div class="message ok" style="animation:none">{{ e.publie.cas }} cas et {{ e.publie.exigences }} exigences sont dans Squash{% if squash_nom %} (projet « {{ squash_nom }} »){% elif squash_id %} (projet n° {{ squash_id }}){% endif %}.</div>
+      {% endif %}
+      {% if a_envoyer or not e.publie %}
       <div class="encadre" id="squash" data-projet="{{ code }}" data-squash="{{ squash_id or '' }}">
-        <div class="ligne-champ" data-zone="saisie">
-          {% if not squash_id %}
-          <div><label for="squash-id">Numéro du projet dans Squash</label>
-            <input type="text" id="squash-id" inputmode="numeric" placeholder="ex. 28"></div>
+        <div data-zone="saisie" class="formulaire-squash">
+          {% if not e.publie %}
+          <div class="champ-squash">
+            <label for="squash-projet">Projet dans Squash</label>
+            {% if squash_id %}<input type="hidden" id="squash-actuel" value="{{ squash_id }}" data-nom="{{ squash_nom }}">{% endif %}
+            <input type="search" id="squash-filtre" placeholder="Rechercher un projet" hidden aria-label="Rechercher un projet Squash">
+            <select id="squash-projet" disabled><option value="">Chargement des projets Squash…</option></select>
+          </div>
           {% endif %}
-          <button class="bouton" type="button" data-action="verifier">Envoyer dans Squash</button>
+          <div class="champ-squash">
+            <label for="squash-url">Lien de l'application testée <span class="discret">(facultatif)</span></label>
+            <input type="url" id="squash-url" value="{{ url_application }}" placeholder="https://recette.exemple.com">
+          </div>
+          <button class="bouton" type="button" data-action="verifier">{% if e.publie %}Envoyer {{ a_envoyer }} nouveau{{ 'x' if a_envoyer > 1 }} cas dans Squash{% else %}Envoyer dans Squash{% endif %}</button>
         </div>
         <div data-zone="progression" hidden><div class="phrase-squash" aria-live="polite"></div><div class="barre"><div></div></div></div>
       </div>
-    {% else %}
-      <div class="message ok" style="animation:none">{{ e.publie.cas }} cas et {{ e.publie.exigences }} exigences sont dans Squash{% if squash_id %} (projet n° {{ squash_id }}){% endif %}.</div>
+      {% endif %}
     {% endif %}
 
     <p class="telechargements">Télécharger :

@@ -188,28 +188,97 @@ def test_parcours_temps_a(env):
     assert "Enregistré et validé" in page and "Envoyer dans Squash" in page
     assert "lecture seule" in c.get(f"/projets/{code}/cas").text
 
-    # Squash : vérification puis envoi, sans doublon à la relance
+    # Jeux de données modifiés dans l'application
+    r = jx(c, f"/projets/{code}/donnees", {"modifications": [{"id": "JDD-004", "lignes": [
+        {"champ": "Prénom", "valeur": "Aya", "remarque": ""}, {"champ": "Nom", "valeur": "Kouassi", "remarque": ""},
+        {"champ": "Code postal", "valeur": "00225", "remarque": "format à confirmer (Q-008)"},
+        {"champ": "Ville", "valeur": "Abidjan", "remarque": "ajouté"}]}]}, f"/projets/{code}/donnees")
+    assert r.status_code == 200, r.text
+    md = (racine / f"projets/{code}/03-valide/jeux-de-donnees.md").read_text(encoding="utf-8")
+    assert "| Prénom | `Aya` |" in md and "| Ville | `Abidjan` | ajouté |" in md and "JDD-005" in md
+    r = jx(c, f"/projets/{code}/donnees", {"modifications": [{"id": "JDD-004", "lignes": [
+        {"champ": "Nom", "valeur": "a"}, {"champ": "nom", "valeur": "b"}]}]}, f"/projets/{code}/donnees")
+    assert r.status_code == 400 and "même nom" in r.json()["erreur"]
+
+    # Squash : projets proposés par leur nom
+    projets_squash = c.get(f"/projets/{code}/squash/projets", headers={"Accept": "application/json"}).json()["projets"]
+    assert {"id": 28, "nom": "SauceDemo"} in projets_squash and len(projets_squash) == 2
+    page = c.get(f"/projets/{code}").text
+    assert "2 cas attendent la réponse à une question bloquante" in page
+
+    # Squash : vérification puis envoi ; les cas suspendus à une question bloquante restent en attente
     r = jx(c, f"/projets/{code}/squash/simuler", {"squash_id": "abc"}, f"/projets/{code}")
     assert r.status_code == 400
-    r = jx(c, f"/projets/{code}/squash/simuler", {"squash_id": "28"}, f"/projets/{code}")
+    r = jx(c, f"/projets/{code}/squash/simuler", {"squash_id": "28", "squash_nom": "SauceDemo", "url": "pas-un-lien"}, f"/projets/{code}")
+    assert r.status_code == 400 and "http" in r.json()["erreur"]
+    r = jx(c, f"/projets/{code}/squash/simuler", {"squash_id": "28", "squash_nom": "SauceDemo", "url": "https://recette.boutique.test"},
+           f"/projets/{code}")
     sim = suivre(c, r.json()["tache"])
     assert sim["statut"] == "termine", sim
-    assert sim["simulation"]["resume"]["creer"] == 53 and sim["simulation"]["projet"]["id"] == 28
+    assert sim["simulation"]["exclus"] == 2 and sim["simulation"]["projet"]["id"] == 28
+    a_creer = sim["simulation"]["resume"]["creer"]
+    fiche = json.loads((racine / f"projets/{code}/projet.json").read_text(encoding="utf-8"))
+    assert fiche["application"]["url"] == "https://recette.boutique.test" and fiche["squash"]["projet_nom"] == "SauceDemo"
     assert len(env["squash"].store["testCases"]) == 0
     r = jx(c, f"/projets/{code}/squash/publier", {"simulation": r.json()["tache"]}, f"/projets/{code}")
     pub = suivre(c, r.json()["tache"])
-    assert pub["statut"] == "termine" and pub["crees"] == 53 and pub["message"] == "Envoyé dans Squash", pub
-    assert len(env["squash"].store["testCases"]) == 27 and len(env["squash"].store["requirements"]) == 17
-    assert "27 cas et 17 exigences sont dans Squash" in c.get(f"/projets/{code}").text
+    assert pub["statut"] == "termine" and pub["crees"] == a_creer and pub["message"] == "Envoyé dans Squash", pub
+    store = env["squash"].store
+    assert len(store["testCases"]) == 25 and len(store["requirements"]) == 17
+    refs = {tc["reference"] for tc in store["testCases"].values()}
+    assert "CT0007" not in refs and "CT0027" not in refs
+
+    # Jeux de données dans Squash : paramètres et valeurs, cités dans le prérequis
+    ct21 = next(tc for tc in store["testCases"].values() if tc["reference"] == "CT0021")
+    assert "${Prenom}" in ct21["prerequisite"] and "${Code_postal}" in ct21["prerequisite"]
+    noms_params = {x["name"] for x in ct21["parameters"]}
+    assert {"Prenom", "Nom", "Code_postal", "Ville"} <= noms_params
+    jdd4 = next(d for d in store["datasets"].values() if d["test_case"] == ct21["id"] and d["name"].startswith("JDD-004"))
+    valeurs = {v["parameter_name"]: v["parameter_value"] for v in jdd4["parameter_values"]}
+    assert valeurs["Prenom"] == "Aya" and valeurs["Ville"] == "Abidjan"
+    assert "25 cas et 17 exigences sont dans Squash" in c.get(f"/projets/{code}").text
+
+    # Répondre aux questions bloquantes (une réponse, un faux positif) : les deux cas partent à leur tour
+    r = jx(c, f"/projets/{code}/questions/Q-002", {"reponse": ""}, f"/projets/{code}/questions")
+    assert r.status_code == 400
+    r = jx(c, f"/projets/{code}/questions/Q-002", {"reponse": "Compte locked_out_user fourni par le client"}, f"/projets/{code}/questions")
+    assert r.status_code == 200 and r.json()["statut"] == "répondue" and r.json()["bloques"] == 1
+    r = jx(c, f"/projets/{code}/questions/Q-005", {"faux_positif": True}, f"/projets/{code}/questions")
+    assert r.json()["statut"] == "close" and r.json()["bloques"] == 0
+    amb = (racine / f"projets/{code}/03-valide/ambiguites.md").read_text(encoding="utf-8")
+    assert "Compte locked_out_user fourni par le client (Koffi Testeur" in amb and "Sans objet : faux positif" in amb
+    assert projets_controle_ok(racine, code)
+    page = c.get(f"/projets/{code}").text
+    assert "Envoyer 2 nouveaux cas dans Squash" in page and "attendent la réponse" not in page
     r = jx(c, f"/projets/{code}/squash/simuler", {}, f"/projets/{code}")
     sim2 = suivre(c, r.json()["tache"])
-    assert sim2["simulation"]["resume"] == {"creer": 0, "existe": 53, "recreer": 0}
+    assert sim2["simulation"]["resume"]["creer"] == 2 and sim2["simulation"]["exclus"] == 0, sim2
+    r = jx(c, f"/projets/{code}/squash/publier", {"simulation": r.json()["tache"]}, f"/projets/{code}")
+    assert suivre(c, r.json()["tache"])["crees"] == 2
+    assert len(store["testCases"]) == 27
+    r = jx(c, f"/projets/{code}/squash/simuler", {}, f"/projets/{code}")
+    sim3 = suivre(c, r.json()["tache"])
+    assert sim3["simulation"]["resume"]["creer"] == 0 and not sim3["simulation"]["jeux"].get("a_creer")
+
+    # Un jeu déjà renseigné dans Squash n'est jamais modifié, même si on le change dans l'application
+    jx(c, f"/projets/{code}/donnees", {"modifications": [{"id": "JDD-004", "lignes": [{"champ": "Prénom", "valeur": "Autre"}]}]},
+       f"/projets/{code}/donnees")
+    r = jx(c, f"/projets/{code}/squash/simuler", {}, f"/projets/{code}")
+    sim4 = suivre(c, r.json()["tache"])
+    assert sim4["simulation"]["jeux"]["a_completer"] == 0 and sim4["simulation"]["jeux"]["deja_renseignes"] > 0
+    assert {v["parameter_name"]: v["parameter_value"] for v in jdd4["parameter_values"]}["Prenom"] == "Aya"
 
     # Modifier à nouveau : les cas redeviennent modifiables
     c.post(f"/projets/{code}/rouvrir", data={"csrf": csrf(c, f"/projets/{code}")})
     assert (racine / f"projets/{code}/02-a-valider/cas-de-tests.json").exists()
     assert 'id="enregistrer"' in c.get(f"/projets/{code}/cas").text
     assert "Reprendre" in c.get("/").text and "Cahier des charges Boutique" in c.get("/projets").text
+
+
+def projets_controle_ok(racine, code):
+    r = subprocess.run([sys.executable, str(racine / "outils" / "controle.py"), code, "--dossier", "03-valide"],
+                       cwd=racine, capture_output=True, text=True)
+    return r.returncode == 0
 
 
 def test_securite(env):

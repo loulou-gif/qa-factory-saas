@@ -138,24 +138,31 @@ class Gestionnaire:
     def _publier(self, t):
         code = t["projet"]
         d = projets.dossier(code)
-        fjson = d / "03-valide" / "cas-de-tests.json"
-        if not fjson.exists():
+        if not (d / "03-valide" / "cas-de-tests.json").exists():
             raise ErreurTache("Rien de validé à publier (03-valide est vide).")
         c = projets.controle(code, "03-valide")
         if not c["ok"]:
             raise ErreurTache("Le contrôle de 03-valide signale des erreurs : " + " ; ".join(c["erreurs"][:5]))
+        # Fichier réellement envoyé : sans les cas suspendus à une question bloquante, avec les jeux de données.
+        prep = projets.preparer_publication(code)
+        fjson = prep["fichier"]
         from qa_commun import empreinte
-        emp = empreinte(fjson)
+        emp = empreinte(fjson) + ":" + empreinte(prep["jeux"])
         appliquer = t["type"] == "publier"
         if appliquer and t["parametres"].get("empreinte") != emp:
-            raise ErreurTache("Le fichier validé a changé depuis la simulation : relancer la simulation.")
+            raise ErreurTache("Les cas, les réponses aux questions ou les jeux de données ont changé depuis la vérification : "
+                              "recommencez l'envoi.")
         if not reglages.squash_mcp_dir or not reglages.squash_url:
             raise ErreurTache("Squash n'est pas configuré sur le serveur (SQUASH_MCP_DIR, SQUASH_TM_BASE_URL).")
         corr = d / "04-livrables" / "squash" / "correspondance.json"
         corr.parent.mkdir(parents=True, exist_ok=True)
-        cmd = ["node", str(reglages.racine / "saas" / "publier_squash.mjs"), "--fichier", str(fjson), "--correspondance", str(corr)]
+        cmd = ["node", str(reglages.racine / "saas" / "publier_squash.mjs"), "--fichier", str(fjson),
+               "--correspondance", str(corr), "--jeux", str(prep["jeux"])]
         if appliquer:
             cmd.append("--appliquer")
+        if prep["exclus"]:
+            self.base.ajouter_journal(t["id"], f"{len(prep['exclus'])} cas en attente d'une réponse bloquante, non envoyés : "
+                                               + ", ".join(sorted(prep["exclus"])))
         self.base.ajouter_journal(t["id"], "Publication réelle en cours (environ 15 s par élément)..." if appliquer
                                   else "Simulation : lecture de Squash, rien n'est créé.")
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -164,6 +171,7 @@ class Gestionnaire:
             res = json.loads(r.stdout)
         except json.JSONDecodeError:
             raise ErreurTache(f"Réponse illisible du module Squash : {(r.stderr or r.stdout)[:400]}")
+        res["exclus"] = prep["exclus"]
         plan = res.get("plan") or []
         resume = {a: sum(1 for x in plan if x.get("action") == a) for a in ("creer", "existe", "recreer")}
         res["resume"] = resume
@@ -173,6 +181,9 @@ class Gestionnaire:
             raise ErreurTache(expliquer_erreur_squash(res["erreurs"]))
         if appliquer:
             n = len(res.get("crees") or [])
+            j = res.get("jeux") or {}
+            if j.get("crees") or j.get("completes"):
+                self.base.ajouter_journal(t["id"], f"Jeux de données : {j.get('crees', 0)} créé(s), {j.get('completes', 0)} complété(s).")
             projets.journaliser(code, "publier", f"{n} élément(s) créé(s) dans Squash (projet {(res.get('projet') or {}).get('id')}), "
                                 f"tâche {t['id']}", ["04-livrables/squash/correspondance.json"])
             self.base.ajouter_journal(t["id"], f"{n} élément(s) créé(s) dans Squash.")
@@ -247,8 +258,9 @@ def progression(t) -> dict:
             p = max(p, 95)
         p = min(p, 97)
         message = [m for seuil, m in MESSAGES_ANALYSE if p >= seuil][-1]
-        if statut == "attente_confirmation":
-            message = "L'assistant attend votre accord"
+        minutes = int(ecoule // 60)
+        if minutes:
+            message += f" · {minutes} min"
         return {"pourcentage": round(p, 1), "message": message}
     if t["type"] == "publier":
         total = int((t["parametres"] or {}).get("a_creer") or 0)

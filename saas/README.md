@@ -6,14 +6,20 @@ Application web interne : les testeurs utilisent QA Factory depuis un navigateur
 
 ## Ce que fait l'application
 
-Un parcours en quatre écrans, sans formation (règles de conception : skill `interface-qa-factory`, couleurs de Synelia) :
+Un parcours simple, sans formation (règles de conception : skill `interface-qa-factory`, couleurs de Synelia) :
 
 1. **Accueil** : un seul rectangle de dépôt. Déposer le cahier des charges (un ou plusieurs fichiers : pdf, docx, doc, odt, md, txt, xlsx, png, jpg) **lance directement l'analyse** ; le projet prend le nom du fichier.
 2. **Génération** : le rectangle se remplit jusqu'à 100 %, affiche « Génération terminée » puis ouvre les fichiers produits. Aucune demande d'accord n'est présentée : tout se déroule en arrière-plan.
 3. **Fichiers produits** : cas de tests, questions pour le client, jeux de données, chacun résumé en une ligne ; Excel et Word en téléchargement.
 4. **Relecture** : les cas, groupés par fonctionnalité en onglets, se lisent replié (une ligne par cas) et se modifient sur place (titre, prérequis, étapes « Je fais » / « Je dois voir »). **« Enregistrer » enregistre et valide** : la version passe dans `03-valide`, les specs d'automatisation sont générées. Il n'y a plus d'étape de validation par un responsable. « Modifier à nouveau les cas » rouvre la relecture si besoin.
 
-Puis **Envoyer dans Squash** : le numéro du projet Squash est demandé la première fois ; l'application vérifie ce qui existe, annonce ce qui sera créé (« 53 éléments… »), puis envoie après confirmation, avec une barre de progression réelle. Rien n'est jamais modifié ni supprimé dans Squash, et une relance ne crée aucun doublon.
+5. **Questions pour le client** : chaque question se renseigne sur place (« Enregistrer la réponse ») ou se classe « Sans objet (faux positif) ». En relecture, « Mettre à jour les cas avec les réponses » fait reporter les réponses dans les cas par l'assistant.
+6. **Jeux de données** : valeurs, remarques et champs se modifient sur place (pas de mot de passe réel : « variable NOM »).
+
+Puis **Envoyer dans Squash** : on choisit le projet Squash **par son nom** dans la liste (recherche si la liste est longue) et, si on le connaît, le lien de l'application testée (enregistré dans `projet.json`). L'application vérifie ce qui existe, annonce ce qui sera créé, puis envoie après confirmation, avec une barre de progression réelle.
+- Les cas suspendus à une **question bloquante encore ouverte** ne partent pas ; dès que la question est répondue ou classée sans objet, la page propose « Envoyer N nouveaux cas dans Squash ».
+- Chaque jeu de données devient, sur le cas, un **jeu de données Squash** (nom `JDD-004 Informations de livraison valides`) avec ses **paramètres** et leurs valeurs ; le prérequis du cas cite les paramètres (`Prénom = ${Prenom}`), pour que Squash affiche les valeurs du jeu choisi à l'exécution.
+- Rien n'est jamais modifié ni supprimé dans Squash : un jeu de données qui a déjà une valeur dans Squash n'est pas touché, seuls les jeux encore vides sont complétés ; une relance ne crée aucun doublon.
 
 Garde-fous propres à la version serveur :
 - l'agent IA n'a **aucun** accès à Squash (le MCP squash-tm est désactivé pour lui), ni au web, ni hors du dépôt ; l'envoi dans Squash passe uniquement par le bouton, avec le code de publication du MCP ;

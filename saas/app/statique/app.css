@@ -28,6 +28,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { font-size: 15px; -webkit-text-size-adjust: 100%; }
 body { margin: 0; min-height: 100vh; background: var(--fond); color: var(--encre);
   font-family: "Nunito", "Segoe UI", system-ui, sans-serif; font-weight: 450; line-height: 1.55; }
@@ -73,7 +74,7 @@ main { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.25rem 7rem; }
 .bouton.discret-btn { background: transparent; color: var(--violet); box-shadow: inset 0 0 0 1.5px var(--violet); }
 .bouton.discret-btn:hover { background: var(--violet-pale); color: var(--violet-fonce); }
 label { display: block; font-weight: 650; margin: 1rem 0 .35rem; }
-input[type=text], input[type=password], textarea, select { width: 100%; font: inherit; color: var(--encre); padding: .6rem .75rem;
+input[type=text], input[type=password], input[type=url], input[type=search], textarea, select { width: 100%; font: inherit; color: var(--encre); padding: .6rem .75rem;
   border: 1.5px solid var(--trait); border-radius: 10px; background: var(--blanc); transition: border-color .2s var(--douce), box-shadow .2s var(--douce); }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px var(--violet-pale); }
 
@@ -245,3 +246,20 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--v
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
 }
+
+/* questions : réponse sur place */
+.repondre { margin: .8rem 0 .4rem; }
+.repondre textarea { width: 100%; }
+.actions-reponse { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: .6rem; }
+.carte.repondue { animation: entree .35s var(--douce); }
+.encadre.integrer { margin-bottom: 1.2rem; }
+.encadre.integrer p { margin-top: 0; }
+/* jeux de données modifiables */
+.tableau.jeu input { width: 100%; border: 1px solid transparent; background: transparent; padding: .35rem .45rem; border-radius: 8px; font: inherit; }
+.tableau.jeu input:hover { border-color: var(--trait); }
+.tableau.jeu input:focus { border-color: var(--violet); background: #fff; outline: none; }
+/* envoi Squash */
+.formulaire-squash { display: grid; gap: .9rem; }
+.champ-squash { display: grid; gap: .35rem; }
+.champ-squash select, .champ-squash input { width: 100%; }
+.formulaire-squash .bouton { justify-self: start; }

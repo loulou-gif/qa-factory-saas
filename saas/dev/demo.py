@@ -93,7 +93,14 @@ def attendre(url, delai=90, auth=None):
     return False
 
 
+def _arret_demande(*_):
+    raise KeyboardInterrupt  # fermeture de la fenêtre ou arrêt du service : même nettoyage que Ctrl+C
+
+
 def main():
+    signal.signal(signal.SIGTERM, _arret_demande)
+    if hasattr(signal, "SIGBREAK"):  # Windows : fermeture de la console
+        signal.signal(signal.SIGBREAK, _arret_demande)
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--modele", default=os.environ.get("QAF_MODELE", ""),
                    help="fournisseur/modèle, ex. openrouter/anthropic/claude-sonnet-4.5 ou opencode/deepseek-v4.1-flash-free")

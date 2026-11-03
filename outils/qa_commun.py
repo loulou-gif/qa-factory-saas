@@ -119,7 +119,8 @@ def _sections(texte, motif):
 
 
 def _champ(corps, nom):
-    m = re.search(rf"^\s*-\s*\*\*{nom}\*\*\s*:\s*(.*)$", corps, flags=re.M | re.I)
+    # [ \t]* et non \s* : un champ vide ne doit pas avaler la ligne suivante.
+    m = re.search(rf"^[ \t]*-[ \t]*\*\*{nom}\*\*[ \t]*:[ \t]*(.*)$", corps, flags=re.M | re.I)
     return m.group(1).strip() if m else ""
 
 
