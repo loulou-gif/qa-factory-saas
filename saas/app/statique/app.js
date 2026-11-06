@@ -24,10 +24,10 @@
   }
 
   /* ---------- fenêtre de dialogue ---------- */
-  function dialogue(titre, contenus, boutons) {
+  function dialogue(titre, contenus, boutons, classe) {
     return new Promise(function (resoudre) {
       var actions = el('div', { 'class': 'actions' });
-      var boite = el('div', { 'class': 'dialogue', role: 'dialog', 'aria-modal': 'true', 'aria-label': titre }, [el('h2', { texte: titre })].concat(contenus).concat([actions]));
+      var boite = el('div', { 'class': 'dialogue' + (classe ? ' ' + classe : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': titre }, [el('h2', { texte: titre })].concat(contenus).concat([actions]));
       var voile = el('div', { 'class': 'voile' }, [boite]);
       function fermer(v) { voile.remove(); resoudre(v); }
       boutons.forEach(function (b) {
@@ -440,22 +440,86 @@
         suivre(r.tache, function (d) {
           var s = d.simulation || {}, res = s.resume || {}, n = (res.creer || 0) + (res.recreer || 0), pr = s.projet || {};
           var jeux = s.jeux || {}, nJeux = (jeux.a_creer || 0) + (jeux.a_completer || 0);
+          var det = s.details || [];
+          var majs = det.filter(function (x) { return x.champs && x.champs.length; });
+          var conflits = det.filter(function (x) { return x.action === 'conflit' && x.conflits && x.conflits.length; });
+          var bloques = det.filter(function (x) { return x.action === 'conflit' && !(x.conflits && x.conflits.length) && x.detail; });
+          var conserves = det.filter(function (x) { return x.conserves && x.conserves.length; });
+          var homonymes = det.filter(function (x) { return x.action === 'homonyme'; });
           montrer('Vérification terminée', 100);
-          if (!n && !nJeux) { phrase.textContent = 'Tout est déjà dans Squash.'; return setTimeout(function () { location.reload(); }, 1200); }
-          var minutes = Math.max(1, Math.ceil((n + nJeux) * 15 / 60));
-          var lignes = [el('p', { texte: (n ? n + ' éléments (exigences, cas de tests et dossiers) seront créés' : 'Aucun nouveau cas à créer') + ' dans le projet Squash « ' + (pr.nom || '?') + ' ».' })];
-          if (nJeux) lignes.push(el('p', { texte: nJeux + ' jeu' + (nJeux > 1 ? 'x' : '') + ' de données ' + (nJeux > 1 ? 'seront renseignés' : 'sera renseigné') + ' sur les cas.' }));
-          if (s.exclus) lignes.push(el('p', { 'class': 'discret', texte: s.exclus + ' cas en attente d\'une réponse bloquante ne sont pas envoyés.' }));
-          lignes.push(el('p', { 'class': 'discret', texte: 'Rien de ce qui existe dans Squash ne sera modifié ni supprimé. Durée estimée : ' + minutes + ' min. Vous pourrez arrêter l\'envoi en cours de route : une relance reprendra la suite, sans doublon.' }));
-          dialogue('Envoyer dans Squash ?', lignes, [{ libelle: 'Annuler', valeur: false }, { libelle: 'Envoyer', valeur: true, principal: true }]).then(function (ok) {
-            if (!ok) { prog.hidden = true; saisie.hidden = false; ev.target.disabled = false; return; }
+
+          function envoyer(forcer) {
             montrer('Envoi dans Squash', 3);
-            api('/projets/' + projet + '/squash/publier', { simulation: r.tache }).then(function (p) {
+            api('/projets/' + projet + '/squash/publier', { simulation: r.tache, forcer: forcer }).then(function (p) {
               suivre(p.tache, function (f) {
-                montrer('Envoyé dans Squash : ' + (f.crees || 0) + ' éléments créés', 100);
+                var bilan = [];
+                if (f.crees) bilan.push(f.crees + ' créé' + (f.crees > 1 ? 's' : ''));
+                if (f.modifies) bilan.push(f.modifies + ' mis à jour (nouvelles versions, anciennes en Obsolète)');
+                montrer(bilan.length ? 'Squash est à jour : ' + bilan.join(', ') + '.' : 'Squash est à jour.', 100);
+                if (f.non_mis_a_jour && f.non_mis_a_jour.length) {
+                  return message('Non mis à jour dans Squash : ' + f.non_mis_a_jour.join(' ; ') + '. Le reste a été traité.', 'alerte');
+                }
                 setTimeout(function () { location.reload(); }, 1500);
               }, true);
             }).catch(function (e) { erreur(e.message); });
+          }
+          // Rien à écrire : l'envoi n'écrit rien dans Squash, il enregistre seulement l'état actuel.
+          if (!n && !nJeux && !majs.length && !conflits.length && !bloques.length && !homonymes.length && !(s.avertissements || []).length) {
+            phrase.textContent = conserves.length ? 'Squash est à jour ; les changements faits dans Squash sont conservés.' : 'Squash est déjà à jour.';
+            return envoyer([]);
+          }
+
+          var nomElt = function (x) { return x.id + (x.titre ? ' · ' + x.titre : ''); };
+          var liste = function (elts, texte) {
+            return el('ul', { 'class': 'plan-liste' }, elts.slice(0, 8).map(function (x) { return el('li', { texte: texte(x) }); })
+              .concat(elts.length > 8 ? [el('li', { 'class': 'discret', texte: 'et ' + (elts.length - 8) + ' autre(s)' })] : []));
+          };
+          var lignes = [el('p', { texte: 'Projet Squash « ' + (pr.nom || '?') + ' ».' })];
+          if (s.dossier_racine) lignes.push(el('p', { texte: 'Tout sera rangé dans un dossier « ' + s.dossier_racine + ' », créé dans les exigences et dans les cas de tests : le reste du projet n\'est pas touché.' }));
+          if (n) lignes.push(el('p', { texte: n + ' élément' + (n > 1 ? 's' : '') + ' (exigences, cas de tests et dossiers) ' + (n > 1 ? 'seront créés.' : 'sera créé.') }));
+          if (majs.length) {
+            lignes.push(el('p', { texte: majs.length + ' élément' + (majs.length > 1 ? 's modifiés' : ' modifié') + ' dans QA Factory : une nouvelle version sera créée, l\'ancienne passera en Obsolète (elle reste dans Squash).' }));
+            lignes.push(liste(majs, function (x) { return nomElt(x) + (x.version ? ' → ' + x.version : '') + ' (' + x.champs.join(', ') + ')'; }));
+          }
+          if (nJeux) lignes.push(el('p', { texte: nJeux + ' jeu' + (nJeux > 1 ? 'x' : '') + ' de données ' + (nJeux > 1 ? 'seront renseignés' : 'sera renseigné') + ' sur les cas.' }));
+          if (conserves.length) {
+            lignes.push(el('p', { texte: 'Changements faits directement dans Squash, conservés (recopiés dans la nouvelle version s\'il y en a une) :' }));
+            lignes.push(liste(conserves, function (x) { return nomElt(x) + ' (' + x.conserves.join(', ') + ')'; }));
+          }
+          if (homonymes.length) {
+            lignes.push(el('p', { texte: 'Déjà présents dans Squash sans avoir été créés par QA Factory : ni créés ni modifiés, pour éviter un doublon.' }));
+            lignes.push(liste(homonymes, function (x) { return nomElt(x) + ' (id Squash ' + x.squash_id + ')'; }));
+          }
+          bloques.forEach(function (x) { lignes.push(el('p', { 'class': 'discret petit', texte: x.id + ' : ' + x.detail + '.' })); });
+          var cases = [];
+          if (conflits.length) {
+            lignes.push(el('h3', { 'class': 'plan-titre', texte: 'Modifiés des deux côtés (' + conflits.length + ')' }));
+            lignes.push(el('p', { 'class': 'discret petit', texte: 'Ces champs ont été changés dans Squash et dans QA Factory. La version de Squash est gardée, sauf si vous cochez « Remplacer » : une nouvelle version est alors créée avec le texte de QA Factory, l\'ancienne passe en Obsolète.' }));
+            conflits.forEach(function (x) {
+              var c = el('input', { type: 'checkbox', 'data-id': x.id });
+              cases.push(c);
+              var corps = [el('label', { 'class': 'garder' }, [c, document.createTextNode(' Remplacer par la version QA Factory')])];
+              if (x.detail) corps.push(el('p', { 'class': 'discret petit', texte: x.detail }));
+              if (x.version) corps.push(el('p', { 'class': 'discret petit', texte: 'Nouvelle version si vous remplacez' + (x.champs && x.champs.length ? ' (créée de toute façon pour : ' + x.champs.join(', ') + ')' : '') + ' : ' + x.version + '.' }));
+              x.conflits.forEach(function (k) {
+                corps.push(el('div', { 'class': 'conflit-champ' }, [
+                  el('span', { 'class': 'libelle', texte: k.libelle }),
+                  el('div', { 'class': 'versions' }, [
+                    el('div', {}, [el('span', { 'class': 'discret petit', texte: 'Dans Squash' }), el('pre', { texte: k.squash || '—' })]),
+                    el('div', {}, [el('span', { 'class': 'discret petit', texte: 'Dans QA Factory' }), el('pre', { texte: k.fichier || '—' })])
+                  ])
+                ]));
+              });
+              lignes.push(el('details', { 'class': 'conflit' }, [el('summary', { texte: nomElt(x) })].concat(corps)));
+            });
+          }
+          (s.avertissements || []).forEach(function (a) { lignes.push(el('p', { 'class': 'message alerte', texte: a })); });
+          if (s.exclus) lignes.push(el('p', { 'class': 'discret', texte: s.exclus + ' cas en attente d\'une réponse bloquante ne sont pas envoyés.' }));
+          var minutes = Math.max(1, Math.ceil((n + nJeux + majs.length + conflits.length) * 15 / 60));
+          lignes.push(el('p', { 'class': 'discret petit', texte: 'Seuls les éléments créés par QA Factory sont concernés. Rien n\'est supprimé ni réécrit : un élément changé reçoit une nouvelle version, l\'ancienne passe en Obsolète. Durée estimée : ' + minutes + ' min. Vous pourrez arrêter en cours de route : une relance reprend la suite, sans doublon.' }));
+          dialogue('Envoyer dans Squash ?', lignes, [{ libelle: 'Annuler', valeur: false }, { libelle: 'Envoyer', valeur: true, principal: true }], 'large').then(function (ok) {
+            if (!ok) { prog.hidden = true; saisie.hidden = false; ev.target.disabled = false; return; }
+            envoyer(cases.filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-id'); }));
           });
         });
       }).catch(function (e) { erreur(e.message); });

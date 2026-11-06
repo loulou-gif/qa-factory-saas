@@ -302,9 +302,14 @@ def tache_progression(request: Request, tid: int):
                "erreur": p["message"] if t["statut"] in ("echec", "interrompue", "annule") else ""}
     if t["type"] == "publier-simulation" and t["statut"] == "termine":
         reponse["simulation"] = {"projet": r.get("projet"), "resume": r.get("resume"), "jeux": r.get("jeux") or {},
-                                 "exclus": len(r.get("exclus") or {})}
+                                 "exclus": len(r.get("exclus") or {}), "details": r.get("details") or [],
+                                 "avertissements": r.get("avertissements") or [],
+                                 "dossier_racine": next((x["id"] for x in r.get("plan") or []
+                                                         if x.get("racine") and x.get("action") == "creer"), "")}
     if t["type"] == "publier" and t["statut"] == "termine":
         reponse["crees"] = len(r.get("crees") or [])
+        reponse["modifies"] = len(r.get("modifies") or [])
+        reponse["non_mis_a_jour"] = r.get("non_mis_a_jour") or []
     if t["type"] == "tester":
         reponse["campagne"] = (t["parametres"] or {}).get("campagne")
     return reponse
@@ -383,7 +388,8 @@ def fichiers_page(request: Request, code: str):
                 squash_nom=(projets.fiche(code).get("squash") or {}).get("projet_nom") or "",
                 url_application=(projets.fiche(code).get("application") or {}).get("url") or "",
                 bloques=len(projets.cas_bloques(code, "03-valide")) if e["valide"] and not e["a_valider"] else 0,
-                a_envoyer=a_envoyer(code, e), squash_cx=connexions.resume(connexions.lire(base, u["id"])),
+                a_envoyer=a_envoyer(code, e),
+                a_maj=projets.a_mettre_a_jour(code) if e["valide"] and not e["a_valider"] and e["publie"] else [], squash_cx=connexions.resume(connexions.lire(base, u["id"])),
                 **resume_tests(code))
 
 
@@ -616,6 +622,11 @@ async def squash_publier(request: Request, code: str):
     if r.get("instance") != cx["url"]:
         raise HTTPException(409, "La connexion Squash a changé depuis la vérification : recommencez l'envoi.")
     resume = r.get("resume") or {}
+    # Conflits à remplacer par la version QA Factory : uniquement des conflits de cette vérification.
+    forcer = corps.get("forcer") or []
+    conflits = {d["id"] for d in (r.get("details") or []) if d.get("action") == "conflit" and d.get("conflits")}
+    if not isinstance(forcer, list) or any(not isinstance(x, str) or x not in conflits for x in forcer):
+        raise HTTPException(400, "Choix de remplacement invalide : recommencez la vérification.")
     deja = 0
     try:
         c = json.loads((projets.dossier(code) / "04-livrables" / "squash" / "correspondance.json").read_text(encoding="utf-8"))
@@ -625,7 +636,8 @@ async def squash_publier(request: Request, code: str):
     try:
         tid = gestionnaire.soumettre(code, "publier", u, {"empreinte": r.get("empreinte"), "simulation": s["id"], "instance": cx["url"],
                                                           "a_creer": int(resume.get("creer", 0)) + int(resume.get("recreer", 0)),
-                                                          "deja": deja})
+                                                          "a_maj": int(resume.get("modifier", 0)) + len(forcer),
+                                                          "forcer": sorted(set(forcer)), "deja": deja})
     except ErreurTache as e:
         raise HTTPException(409, str(e))
     return {"tache": tid}
@@ -807,7 +819,7 @@ async def modifications_appliquer(request: Request, code: str):
         projets.script("generer_specs.py", code)
     base.auditer(u["id"], code, "modifications-cas", f"campagne {corps.get('campagne')} : {n} acceptée(s)")
     flash(request, (f"{n} cas mis à jour dans la version validée." if n else "Aucune modification retenue : les cas sont inchangés.")
-          + (" Pensez à mettre à jour Squash." if n and projets.etat(code)["publie"] else ""), "ok")
+          + (" Mettez Squash à jour depuis la page du projet." if n and projets.etat(code)["publie"] else ""), "ok")
     return {"ok": True, "redirection": f"/projets/{code}"}
 
 

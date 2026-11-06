@@ -2,12 +2,19 @@
 // Publication Squash TM sans IA, pour l'application web QA Factory SaaS.
 //
 // Utilise le code de publication du MCP squash-tm (fork) : mêmes règles, même fichier de
-// correspondance, mêmes garanties (rien n'est modifié ni supprimé dans Squash, reprise sans
-// doublon). L'application lance d'abord une simulation, la montre au responsable du projet,
-// puis relance avec --appliquer après son clic de confirmation.
+// correspondance, reprise sans doublon. L'application lance d'abord une simulation, la montre au
+// responsable du projet, puis relance avec --appliquer après son clic de confirmation.
+//
+// --mettre-a-jour : met aussi à jour les éléments créés par QA Factory (et eux seuls). Rien n'est réécrit ni
+// supprimé : un élément changé reçoit une nouvelle version (CT0001.1, CT0001.2...) et l'ancienne passe en
+// Obsolète. Un changement fait dans Squash par quelqu'un est recopié dans la nouvelle version ; un champ changé
+// des deux côtés garde la version Squash sauf pour les ids de --forcer (liste séparée par des virgules).
+// Aucun élément n'est créé si sa référence existe déjà dans le projet (ou dans le dossier racine).
+// --dossier-racine <nom> : à la première publication, tout est rangé dans un dossier de ce nom.
 //
 // Usage :
-//   node saas/publier_squash.mjs --fichier <publication.json> --correspondance <correspondance.json> [--jeux <jeux-squash.json>] [--appliquer]
+//   node saas/publier_squash.mjs --fichier <publication.json> --correspondance <correspondance.json> [--jeux <jeux-squash.json>]
+//                                [--mettre-a-jour] [--forcer CT0001,EX-002] [--dossier-racine <nom>] [--appliquer]
 //   node saas/publier_squash.mjs --lister-projets
 //   node saas/publier_squash.mjs --tester            (connexion : nombre de projets visibles par le compte)
 //
@@ -38,6 +45,9 @@ const valeur = (nom) => {
 const fichier = valeur('--fichier');
 const correspondance = valeur('--correspondance');
 const appliquer = args.includes('--appliquer');
+const mettreAJour = args.includes('--mettre-a-jour');
+const dossierRacine = valeur('--dossier-racine');
+const forcer = (valeur('--forcer') || '').split(',').map((x) => x.trim()).filter(Boolean);
 const fichierArret = valeur('--arret');
 const doitArreter = () => Boolean(fichierArret) && fs.existsSync(fichierArret);
 const dossierMcp = process.env.SQUASH_MCP_DIR || '';
@@ -154,7 +164,15 @@ try {
     appliquer,
     squashUrl: process.env.SQUASH_TM_BASE_URL,
     doitArreter,
+    mettreAJour,
+    forcer,
+    dossierRacine,
   });
+  // Échec de mise à jour d'un élément (ex. ancienne version non passée en Obsolète, reprise au prochain envoi) :
+  // signalé à part, les autres éléments ont été traités.
+  const parElement = /^(Exigence|Cas) \S+( \(id \d+\))? (non mis|non mise|non passé|: exigences nouvelles)/;
+  resultat.non_mis_a_jour = (resultat.erreurs || []).filter((e) => parElement.test(e));
+  resultat.erreurs = (resultat.erreurs || []).filter((e) => !parElement.test(e));
   if (!resultat.arrete && (!resultat.erreurs || !resultat.erreurs.length)) {
     resultat.jeux = await traiterJeux(appliquer);
     if (resultat.jeux.arrete) resultat.arrete = true;

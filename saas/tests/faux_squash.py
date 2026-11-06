@@ -59,7 +59,7 @@ class FauxSquash:
                     faux.requetes.append((self.command, p, corps))
                     return faux.repondre(self, self.command, p, requete, corps)
 
-            do_GET = do_POST = do_PATCH = _traiter
+            do_GET = do_POST = do_PATCH = do_DELETE = _traiter
 
         self.serveur = ThreadingHTTPServer(("127.0.0.1", 0), G)
         self.url = f"http://127.0.0.1:{self.serveur.server_address[1]}/api/rest/latest"
@@ -68,6 +68,42 @@ class FauxSquash:
     def _id(self):
         self.prochain += 1
         return self.prochain
+
+    @staticmethod
+    def html(v):
+        """Squash reformate le HTML (retour à la ligne après chaque paragraphe)."""
+        return re.sub(r"</p>(?!\n)", "</p>\n", v) if isinstance(v, str) else v
+
+    def projet_de(self, parent):
+        """Projet d'un élément, en remontant ses dossiers parents."""
+        for _ in range(50):
+            if not parent:
+                return None
+            if parent.get("_type") == "project":
+                return parent.get("id")
+            dossiers = self.store["reqFolders"] if parent.get("_type") == "requirement-folder" else self.store["tcFolders"]
+            parent = (dossiers.get(parent.get("id")) or {}).get("parent")
+        return None
+
+    def chemin(self, parent, nom):
+        """Chemin tel que Squash le donne : /<projet>/<dossiers>/<nom>."""
+        morceaux = [nom or ""]
+        for _ in range(50):
+            if not parent:
+                break
+            if parent.get("_type") == "project":
+                morceaux.insert(0, (self.store["projects"].get(parent.get("id")) or {}).get("name", f"P{parent.get('id')}"))
+                break
+            dossiers = self.store["reqFolders"] if parent.get("_type") == "requirement-folder" else self.store["tcFolders"]
+            d = dossiers.get(parent.get("id"))
+            if not d:
+                break
+            morceaux.insert(0, d["name"])
+            parent = d.get("parent")
+        return "/" + "/".join(morceaux)
+
+    def _cas_du_pas(self, sid):
+        return next((t for t in self.store["testCases"].values() if any(x.get("id") == sid for x in t.get("steps") or [])), None)
 
     def repondre(self, h, methode, p, requete, corps):
         s = self.store
@@ -82,11 +118,46 @@ class FauxSquash:
             nom = requete.split("projectName=")[1].split("&")[0]
             pr = next((x for x in s["projects"].values() if x["name"] == nom), None)
             return h._envoyer(200, pr) if pr else h._envoyer(404)
+        # Comme Squash 9 : deux éléments de même nom dans le même conteneur sont refusés
+        def meme_conteneur(elements, parent, nom):
+            return any(x.get("name") == nom and (x.get("parent") or {}).get("_type") == (parent or {}).get("_type")
+                       and (x.get("parent") or {}).get("id") == (parent or {}).get("id") for x in elements.values())
+        if methode == "POST" and p in ("/requirements", "/test-cases"):
+            nom = (corps.get("current_version") or {}).get("name") if p == "/requirements" else corps.get("name")
+            if meme_conteneur(s["requirements" if p == "/requirements" else "testCases"], corps.get("parent"), nom):
+                return h._envoyer(412, {"status": 412, "message": f"Cannot rename {nom} : {nom} already exists within the same container"})
         if methode == "POST" and p == "/requirements":
             i = self._id()
-            s["requirements"][i] = {"_type": "requirement", "id": i, "name": corps["current_version"]["name"],
-                                    "current_version": corps["current_version"], "parent": corps.get("parent")}
+            v = dict(corps["current_version"], description=self.html(corps["current_version"].get("description")))
+            s["requirements"][i] = {"_type": "requirement", "id": i, "name": v["name"], "current_version": v, "parent": corps.get("parent")}
             return h._envoyer(201, s["requirements"][i])
+        m = re.match(r"^/requirements/(\d+)$", p)
+        if methode == "PATCH" and m:
+            r = s["requirements"].get(int(m.group(1)))
+            if not r:
+                return h._envoyer(404)
+            champs = {k: v for k, v in corps["current_version"].items() if k != "_type"}
+            # Comme Squash 9 : une version obsolète ne change plus ; une version approuvée, seulement son statut.
+            if r["current_version"].get("status") == "OBSOLETE":
+                return h._envoyer(412, {"error": "Can not change an obsolete requirement"})
+            if r["current_version"].get("status") == "APPROVED" and set(champs) - {"status"}:
+                return h._envoyer(412, {"error": "La version approuvée est verrouillée."})
+            if "description" in champs:
+                champs["description"] = self.html(champs["description"])
+            r["current_version"].update(champs)
+            r["name"] = r["current_version"]["name"]
+            return h._envoyer(200, r)
+        m = re.match(r"^/projects/(\d+)/(test-cases|requirements)$", p)
+        if methode == "GET" and m:
+            pid = int(m.group(1))
+            if m.group(2) == "test-cases":
+                liste = [{"_type": "test-case", "id": t["id"], "name": t.get("name"), "reference": t.get("reference", ""),
+                          "path": self.chemin(t.get("parent"), t.get("name"))}
+                         for t in s["testCases"].values() if self.projet_de(t.get("parent")) == pid]
+                return h._envoyer(200, {"_embedded": {"test-cases": liste}, "page": {"size": 200, "totalElements": len(liste), "totalPages": 1, "number": 0}})
+            liste = [{"_type": "requirement", "id": r["id"], "name": r.get("name"), "path": self.chemin(r.get("parent"), r.get("name"))}
+                     for r in s["requirements"].values() if self.projet_de(r.get("parent")) == pid]
+            return h._envoyer(200, {"_embedded": {"requirements": liste}, "page": {"size": 200, "totalElements": len(liste), "totalPages": 1, "number": 0}})
         for cle, motif, typ in (("requirements", r"^/requirements/(\d+)$", None), ("reqFolders", r"^/requirement-folders/(\d+)$", None),
                                 ("tcFolders", r"^/test-case-folders/(\d+)$", None), ("testCases", r"^/test-cases/(\d+)$", None)):
             m = re.match(motif, p)
@@ -103,7 +174,10 @@ class FauxSquash:
                 return h._envoyer(400, {"error": "expected standard test case"})
             i = self._id()
             s["testCases"][i] = {"_type": "test-case", "id": i, "name": corps.get("name"), **corps}
-            s["testCases"][i]["id"] = i
+            s["testCases"][i].update(id=i, description=self.html(corps.get("description")), prerequisite=self.html(corps.get("prerequisite")),
+                                     steps=[dict(x, id=self._id(), action=self.html(x["action"]), expected_result=self.html(x["expected_result"]))
+                                            for x in corps.get("steps") or []],
+                                     verified_requirements=[{"_type": "requirement-version", "id": r["id"]} for r in corps.get("verified_requirements") or []])
             jeux = []
             for d in corps.get("datasets") or []:
                 j = self._id()
@@ -112,12 +186,47 @@ class FauxSquash:
             s["testCases"][i]["datasets"] = jeux
             s["testCases"][i]["parameters"] = []
             return h._envoyer(201, s["testCases"][i])
+        m = re.match(r"^/test-cases/(\d+)$", p)
+        if methode == "PATCH" and m:
+            t = s["testCases"].get(int(m.group(1)))
+            if not t:
+                return h._envoyer(404)
+            champs = {k: v for k, v in corps.items() if k != "_type"}
+            for k in ("description", "prerequisite"):
+                if k in champs:
+                    champs[k] = self.html(champs[k])
+            t.update(champs)
+            return h._envoyer(200, t)
         m = re.match(r"^/test-cases/(\d+)/coverages/([\d,]+)$", p)
+        if methode in ("POST", "DELETE") and m:
+            t = s["testCases"].get(int(m.group(1)), {})
+            ids = [int(x) for x in m.group(2).split(",")]
+            if methode == "POST":
+                s["coverages"].append((int(m.group(1)), m.group(2)))
+                deja = {r["id"] for r in t.get("verified_requirements") or []}
+                t.setdefault("verified_requirements", []).extend({"_type": "requirement-version", "id": x} for x in ids if x not in deja)
+                return h._envoyer(200, t)
+            t["verified_requirements"] = [r for r in t.get("verified_requirements") or [] if r["id"] not in ids]
+            return h._envoyer(204)
+        m = re.match(r"^/test-cases/(\d+)/steps$", p)
         if methode == "POST" and m:
-            s["coverages"].append((int(m.group(1)), m.group(2)))
-            return h._envoyer(200, s["testCases"].get(int(m.group(1)), {}))
-        if methode == "POST" and re.match(r"^/test-cases/\d+/steps$", p):
-            return h._envoyer(201, {"_type": "action-step", "id": self._id(), **(corps or {})})
+            st = {"_type": "action-step", "id": self._id(), "action": self.html(corps.get("action")), "expected_result": self.html(corps.get("expected_result"))}
+            s["testCases"].get(int(m.group(1)), {}).setdefault("steps", []).append(st)
+            return h._envoyer(201, st)
+        m = re.match(r"^/test-steps/(\d+)$", p)
+        if methode == "PATCH" and m:
+            t = self._cas_du_pas(int(m.group(1)))
+            if not t:
+                return h._envoyer(404)
+            st = next(x for x in t["steps"] if x["id"] == int(m.group(1)))
+            st.update(action=self.html(corps["action"]), expected_result=self.html(corps["expected_result"]))
+            return h._envoyer(200, st)
+        m = re.match(r"^/test-steps/([\d,]+)$", p)
+        if methode == "DELETE" and m:
+            ids = [int(x) for x in m.group(1).split(",")]
+            for t in s["testCases"].values():
+                t["steps"] = [x for x in t.get("steps") or [] if x["id"] not in ids]
+            return h._envoyer(204)
         if methode == "POST" and re.match(r"^/test-steps/\d+/coverages/[\d,]+$", p):
             return h._envoyer(200, {})
         if methode == "POST" and p == "/parameters":

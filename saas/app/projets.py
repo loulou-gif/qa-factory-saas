@@ -607,3 +607,65 @@ def preparer_publication(code: str) -> dict:
     fpub.write_text(json.dumps(sortie, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     fjeux.write_text(json.dumps(jeux_squash, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"fichier": fpub, "jeux": fjeux, "exclus": bloques, "nb_cas": len(publies), "nb_jeux": len(jeux_squash)}
+
+
+# ---------------------------------------------------------------- suivi de ce qui a été envoyé dans Squash
+
+def _empreinte_element(x: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(x, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def _fichier_envoye(code: str) -> Path:
+    return dossier(code) / "04-livrables" / "squash" / "envoye.json"
+
+
+def empreintes_validees(code: str) -> dict:
+    """Empreinte de chaque cas et exigence de 03-valide (contenu tel que validé)."""
+    data = charger_cas(code, "03-valide") or {}
+    return {"cas_de_tests": {c["id"]: _empreinte_element(c) for c in data.get("cas_de_tests", [])},
+            "exigences": {e["id"]: _empreinte_element(e) for e in data.get("exigences", [])}}
+
+
+def enregistrer_envoi(code: str, non_envoyes=()) -> None:
+    """Après un envoi : la version de chaque élément maintenant à jour dans Squash. Les éléments non
+    envoyés (échec de mise à jour) gardent leur ancienne empreinte : ils restent à mettre à jour."""
+    f = _fichier_envoye(code)
+    try:
+        ancien = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        ancien = {}
+    nouveau = empreintes_validees(code)
+    try:
+        corr = json.loads((dossier(code) / "04-livrables" / "squash" / "correspondance.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        corr = {}
+    sortie = {}
+    for genre in ("cas_de_tests", "exigences"):
+        dans_squash = set((corr.get(genre) or {}).keys())
+        anciens = ancien.get(genre) or {}
+        sortie[genre] = {i: (anciens[i] if i in non_envoyes and i in anciens else h)
+                         for i, h in nouveau[genre].items() if i in dans_squash and (i not in non_envoyes or i in anciens)}
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(sortie, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
+def a_mettre_a_jour(code: str):
+    """Cas et exigences déjà dans Squash, modifiés dans QA Factory depuis le dernier envoi.
+    None si on ne le sait pas (envoi fait avant ce suivi) : seule une vérification de Squash le dira."""
+    f = _fichier_envoye(code)
+    if not f.exists():
+        return None
+    try:
+        envoye = json.loads(f.read_text(encoding="utf-8"))
+        corr = json.loads((dossier(code) / "04-livrables" / "squash" / "correspondance.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    actuel = empreintes_validees(code)
+    bloques = cas_bloques(code, "03-valide")
+    ids = []
+    for genre in ("exigences", "cas_de_tests"):
+        for i, h in actuel[genre].items():
+            if i in (corr.get(genre) or {}) and i not in bloques and (envoye.get(genre) or {}).get(i) != h:
+                ids.append(i)
+    return ids

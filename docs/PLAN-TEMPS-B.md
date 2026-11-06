@@ -30,7 +30,7 @@ Décisions du 2026-11-06 :
 | Lot | Contenu | État |
 |---|---|---|
 | 1 | Application testée (lien, comptes chiffrés, actions autorisées) ; tâche « tester » ; résultats, rapport HTML/Excel ; modifications proposées et validation | fait (tests : `saas/tests/test_tests_application.py` ; essai réel sur Linux/Docker à faire) |
-| 2 | Mise à jour Squash des éléments créés par QA Factory : évaluation, détection des changements faits dans Squash, mise à jour sans doublon (fork MCP : `updatePublication`) | à faire |
+| 2 | Mise à jour Squash des éléments créés par QA Factory : évaluation, détection des changements faits dans Squash, mise à jour sans doublon (fork MCP : option `mettreAJour` de `publierFichier`, outil `update_published_test_cases`) | fait : nouvelle version `CT0001.N` et ancienne en Obsolète (rien n'est réécrit ni supprimé), dossier « QA Factory - <projet> » au premier envoi (tests : `saas/tests/test_mise_a_jour_squash.py`, `squash-tm-mcp/test/miseAJour.test.ts` ; chaîne vérifiée sur le vrai Squash, projet SauceDemo, le 2026-11-06) |
 | 3 | Proposition de priorités d'automatisation ; génération Playwright JS/TS dans un dépôt d'automatisation par projet (`templates/automatisation/`) | à faire |
 | 4 | Exécution des scripts depuis l'application, résultats, rapport Playwright, archive des scripts | à faire |
 

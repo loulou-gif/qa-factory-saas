@@ -236,7 +236,8 @@ def test_arret_d_un_envoi_en_cours(espace):
         raise AssertionError("tâche trop longue")
 
     deja = len(squash.store["testCases"])
-    sim = lancer(f"/projets/{code}/squash/simuler", {"squash_id": "28", "squash_nom": "SauceDemo"})
+    # Projet Squash n° 29 : les autres tests publient les mêmes références (CT0001...) dans le n° 28.
+    sim = lancer(f"/projets/{code}/squash/simuler", {"squash_id": "29", "squash_nom": "Autre projet"})
     assert attendre(sim)["statut"] == "termine"
     squash.lenteur_creation = 0.3
     try:

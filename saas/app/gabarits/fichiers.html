@@ -60,14 +60,26 @@
       {% if e.publie %}
       <div class="message ok" style="animation:none">{{ e.publie.cas }} cas et {{ e.publie.exigences }} exigences sont dans Squash{% if squash_nom %} (projet « {{ squash_nom }} »){% elif squash_id %} (projet n° {{ squash_id }}){% endif %}.</div>
       {% endif %}
-      {% if (a_envoyer or not e.publie) and not squash_cx %}
+      {% set nb_maj = a_maj|length if a_maj is not none else 0 %}
+      {% set en_attente = a_envoyer or not e.publie or nb_maj %}
+      {% if en_attente and not squash_cx %}
       <div class="encadre connecter-squash">
         <p>Pour envoyer ces cas dans Squash, connectez d'abord votre Squash : son adresse et le compte à utiliser.</p>
         <a class="bouton" href="/parametres/squash">Connecter Squash</a>
       </div>
-      {% elif a_envoyer or not e.publie %}
-      <div class="encadre" id="squash" data-projet="{{ code }}" data-squash="{{ squash_id or '' }}">
+      {% elif squash_cx %}
+      <div class="encadre{{ ' squash-a-jour' if not en_attente }}" id="squash" data-projet="{{ code }}" data-squash="{{ squash_id or '' }}">
         <div data-zone="saisie" class="formulaire-squash">
+          {% if e.publie %}
+          {% if nb_maj %}
+          <p class="a-mettre-a-jour"><strong>{{ nb_maj }} élément{{ 's' if nb_maj > 1 }} modifié{{ 's' if nb_maj > 1 }} depuis le dernier envoi</strong>
+            <span class="discret petit">({{ a_maj[:6]|join(', ') }}{{ '…' if nb_maj > 6 }})</span></p>
+          {% elif a_maj is none %}
+          <p class="discret petit">Vérifiez Squash pour reporter les dernières modifications des cas. Ce qui a été changé directement dans Squash est conservé.</p>
+          {% elif not a_envoyer %}
+          <p class="discret petit">Squash est à jour avec les cas validés.</p>
+          {% endif %}
+          {% endif %}
           {% if not e.publie %}
           <div class="champ-squash combo" id="combo-squash">
             <label for="squash-recherche">Projet dans Squash</label>
@@ -84,12 +96,23 @@
             <p id="squash-etat" class="discret petit combo-etat" aria-live="polite"></p>
           </div>
           {% endif %}
+          {% if not e.publie %}
           <div class="champ-squash">
             <label for="squash-url">Lien de l'application testée <span class="discret">(facultatif)</span></label>
             <input type="url" id="squash-url" value="{{ url_application }}" placeholder="https://recette.exemple.com">
           </div>
+          {% endif %}
+          {% if en_attente %}
           <p class="discret petit envoi-vers">Envoi vers {{ squash_cx.adresse }}{% if squash_cx.mode == 'jeton' %} avec votre jeton d'API{% elif squash_cx.identifiant %} avec le compte {{ squash_cx.identifiant }}{% endif %}. <a href="/parametres/squash">Changer de connexion</a></p>
-          <button class="bouton" type="button" data-action="verifier">{% if e.publie %}Envoyer {{ a_envoyer }} nouveau{{ 'x' if a_envoyer > 1 }} cas dans Squash{% else %}Envoyer dans Squash{% endif %}</button>
+          {% endif %}
+          <button class="{{ 'bouton' if en_attente else 'lien-bouton' }}" type="button" data-action="verifier">
+            {%- if not e.publie %}Envoyer dans Squash
+            {%- elif a_envoyer and nb_maj %}Envoyer {{ a_envoyer }} nouveau{{ 'x' if a_envoyer > 1 }} cas et {{ nb_maj }} mise{{ 's' if nb_maj > 1 }} à jour
+            {%- elif a_envoyer %}Envoyer {{ a_envoyer }} nouveau{{ 'x' if a_envoyer > 1 }} cas dans Squash
+            {%- elif nb_maj %}Mettre à jour Squash
+            {%- elif a_maj is none %}Vérifier et mettre à jour Squash
+            {%- else %}Vérifier Squash{% endif -%}
+          </button>
         </div>
         <div data-zone="progression" hidden><div class="phrase-squash" aria-live="polite"></div><div class="barre"><div></div></div>
           <button class="lien-bouton arreter-envoi" type="button" data-action="arreter" hidden>Arrêter l'envoi</button></div>

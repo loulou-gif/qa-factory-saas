@@ -383,3 +383,22 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--v
 }
 #modifications { padding-bottom: 5rem; }
 .large-resultats h2 { font-size: 1.2rem; margin: 1.9rem 0 .7rem; }
+
+/* ---------- mise à jour de Squash (temps B, lot 2) ---------- */
+.dialogue.large { max-width: 720px; max-height: 88vh; overflow-y: auto; }
+.dialogue h3.plan-titre { font-size: 1.02rem; margin: 1.2rem 0 .3rem; }
+.plan-liste { margin: .2rem 0 .8rem; padding-left: 1.2rem; font-size: .92rem; }
+.plan-liste li { margin: .15rem 0; }
+details.conflit { border: 1px solid var(--trait); border-radius: 10px; padding: .55rem .8rem; margin: .5rem 0; }
+details.conflit summary { cursor: pointer; font-weight: 600; }
+details.conflit[open] summary { margin-bottom: .5rem; }
+.conflit-champ { margin-top: .6rem; }
+.conflit-champ .libelle { display: block; font-weight: 600; font-size: .88rem; margin-bottom: .25rem; }
+.conflit-champ .libelle::first-letter { text-transform: uppercase; }
+.conflit-champ .versions { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.conflit-champ pre { margin: .2rem 0 0; max-height: 14rem; overflow: auto; font-family: inherit; font-size: .9rem; }
+@media (max-width: 600px) { .conflit-champ .versions { grid-template-columns: 1fr; } }
+.squash-a-jour { padding-top: .9rem; padding-bottom: .9rem; }
+.squash-a-jour .formulaire-squash { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1rem; }
+.squash-a-jour .formulaire-squash p { margin: 0; }
+.a-mettre-a-jour { margin: 0 0 .6rem; }

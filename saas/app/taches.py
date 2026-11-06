@@ -30,6 +30,52 @@ class ErreurTache(Exception):
     pass
 
 
+LIBELLES_CHAMPS = {"titre": "titre", "description": "description", "prerequis": "prérequis", "importance": "importance",
+                   "statut": "statut", "nature": "nature", "type": "type", "etapes": "étapes", "exigences": "exigences couvertes",
+                   "criticite": "criticité", "categorie": "catégorie"}
+
+
+def details_plan(plan, fichier) -> list:
+    """Éléments du plan qui demandent l'attention de la personne : mises à jour, changements faits dans Squash
+    (conservés ou en conflit), références déjà présentes dans le projet. Titres repris du fichier envoyé."""
+    try:
+        f = json.loads(open(fichier, encoding="utf-8").read())
+        titres = {x["id"]: x.get("titre", "") for x in (f.get("exigences") or []) + (f.get("cas_de_tests") or [])}
+    except Exception:  # noqa: BLE001
+        titres = {}
+    lib = lambda champs: [LIBELLES_CHAMPS.get(c, c) for c in champs or []]  # noqa: E731
+    sortie = []
+    for l in plan:
+        if l.get("type") not in ("exigence", "cas-de-test"):
+            continue
+        if l.get("action") not in ("modifier", "conflit", "homonyme") and not l.get("conserves"):
+            continue
+        sortie.append({"id": l["id"], "type": l["type"], "titre": titres.get(l["id"], ""), "action": l["action"],
+                       "version": l.get("version") or "",
+                       "squash_id": l.get("squash_id"), "champs": lib(l.get("champs")), "conserves": lib(l.get("conserves")),
+                       "conflits": [{"libelle": c.get("libelle"), "squash": (c.get("squash") or "")[:1500],
+                                     "fichier": (c.get("fichier") or "")[:1500]} for c in l.get("conflits") or []],
+                       "detail": l.get("detail") or ""})
+    return sortie
+
+
+def dossier_racine(code: str) -> str:
+    """Dossier créé dans Squash au premier envoi pour ranger tout ce que QA Factory y publie : le projet Squash
+    peut déjà contenir des éléments de mêmes références (autre outil, ancienne publication), jamais touchés."""
+    nom = (projets.fiche(code).get("nom") or code).strip()
+    return f"QA Factory - {nom}"[:200]
+
+
+def premier_envoi(corr) -> bool:
+    """Vrai si rien n'a encore été publié avec cette correspondance (ou si elle a déjà un dossier racine)."""
+    try:
+        c = json.loads(open(corr, encoding="utf-8").read())
+    except (OSError, ValueError):
+        return True
+    deja = any(c.get(k) for k in ("exigences", "cas_de_tests", "dossiers_exigences", "dossiers_cas"))
+    return not deja or bool(c.get("dossier_racine"))
+
+
 expliquer_erreur_squash = connexions.expliquer
 
 
@@ -151,7 +197,13 @@ class Gestionnaire:
         adresse = connexions.adresse_affichee(cx["url"])
         corr = d / "04-livrables" / "squash" / "correspondance.json"
         corr.parent.mkdir(parents=True, exist_ok=True)
-        arguments = ["--fichier", fjson, "--correspondance", corr, "--jeux", prep["jeux"]] + (["--appliquer"] if appliquer else [])
+        # Les éléments créés par QA Factory sont aussi mis à jour ; un changement fait dans Squash est conservé,
+        # sauf conflit que la personne a choisi de remplacer (liste « forcer », vérifiée à la demande d'envoi).
+        forcer = [str(x) for x in (t["parametres"].get("forcer") or [])]
+        arguments = (["--fichier", fjson, "--correspondance", corr, "--jeux", prep["jeux"], "--mettre-a-jour"]
+                     + (["--forcer", ",".join(forcer)] if forcer and appliquer else [])
+                     + (["--dossier-racine", dossier_racine(code)] if premier_envoi(corr) else [])
+                     + (["--appliquer"] if appliquer else []))
         if prep["exclus"]:
             self.base.ajouter_journal(t["id"], f"{len(prep['exclus'])} cas en attente d'une réponse bloquante, non envoyés : "
                                                + ", ".join(sorted(prep["exclus"])))
@@ -163,8 +215,10 @@ class Gestionnaire:
         res["exclus"] = prep["exclus"]
         res["instance"] = cx["url"]
         plan = res.get("plan") or []
-        resume = {a: sum(1 for x in plan if x.get("action") == a) for a in ("creer", "existe", "recreer")}
+        resume = {a: sum(1 for x in plan if x.get("action") == a) for a in ("creer", "existe", "recreer", "modifier", "conflit", "homonyme")}
+        resume["conserves"] = sum(1 for x in plan if x.get("conserves"))
         res["resume"] = resume
+        res["details"] = details_plan(plan, fjson)
         res["empreinte"] = emp
         self.base.maj_tache(t["id"], resultat=res)
         if res.get("erreurs"):
@@ -181,15 +235,30 @@ class Gestionnaire:
             return
         if appliquer:
             n = len(res.get("crees") or [])
+            m = len(res.get("modifies") or [])
+            echecs = res.get("non_mis_a_jour") or []
             j = res.get("jeux") or {}
             if j.get("crees") or j.get("completes"):
                 self.base.ajouter_journal(t["id"], f"Jeux de données : {j.get('crees', 0)} créé(s), {j.get('completes', 0)} complété(s).")
-            projets.journaliser(code, "publier", f"{n} élément(s) créé(s) dans Squash (projet {(res.get('projet') or {}).get('id')}), "
-                                f"tâche {t['id']}", ["04-livrables/squash/correspondance.json"])
-            self.base.ajouter_journal(t["id"], f"{n} élément(s) créé(s) dans Squash.")
+            for e in echecs:
+                self.base.ajouter_journal(t["id"], e)
+            projets.enregistrer_envoi(code, non_envoyes={e.split()[1] for e in echecs if len(e.split()) > 1})
+            versions = [f"{x.get('version')} (remplace l'id {x.get('ancien_squash_id')}, passé en Obsolète)"
+                        for x in res.get("modifies") or [] if x.get("version")]
+            for v in versions:
+                self.base.ajouter_journal(t["id"], "Nouvelle version " + v)
+            projets.journaliser(code, "publier", f"{n} élément(s) créé(s), {m} mis à jour dans Squash (projet "
+                                f"{(res.get('projet') or {}).get('id')})"
+                                + (f", {len(forcer)} conflit(s) remplacé(s) : {', '.join(forcer)}" if forcer else "")
+                                + (f", {len(echecs)} non mis à jour" if echecs else "")
+                                + (f" ; nouvelles versions : {', '.join(x.split(' (')[0] for x in versions)}" if versions else "")
+                                + f", tâche {t['id']}",
+                                ["04-livrables/squash/correspondance.json"])
+            self.base.ajouter_journal(t["id"], f"{n} élément(s) créé(s), {m} mis à jour dans Squash.")
         else:
-            self.base.ajouter_journal(t["id"], f"Plan : {resume['creer']} à créer, {resume['existe']} déjà présent(s), "
-                                               f"{resume['recreer']} à recréer.")
+            self.base.ajouter_journal(t["id"], f"Plan : {resume['creer']} à créer, {resume['modifier']} à mettre à jour, "
+                                               f"{resume['conflit']} modifié(s) aussi dans Squash, {resume['homonyme']} déjà présent(s) "
+                                               f"sans avoir été créé(s) par QA Factory, {resume['existe']} à jour, {resume['recreer']} à recréer.")
 
     def _tester(self, t):
         """Exécution des cas validés sur l'application par l'agent, dans un navigateur propre à la tâche."""
@@ -334,5 +403,8 @@ def progression(t) -> dict:
         except Exception:  # noqa: BLE001
             pass
         p = 3 + 94 * (max(0, fait) / total) if total else 3 + 60 * (1 - math.exp(-ecoule / 120))
-        return {"pourcentage": round(min(p, 97), 1), "message": f"Création dans Squash : {max(0, fait)} sur {total}" if total else "Envoi dans Squash"}
+        if total and fait >= total and (t["parametres"] or {}).get("a_maj"):
+            return {"pourcentage": 97, "message": "Mise à jour des éléments modifiés"}
+        return {"pourcentage": round(min(p, 97), 1), "message": f"Création dans Squash : {max(0, fait)} sur {total}" if total
+                else ("Mise à jour dans Squash" if (t["parametres"] or {}).get("a_maj") else "Envoi dans Squash")}
     return {"pourcentage": round(min(97, 10 + 80 * (1 - math.exp(-ecoule / 10))), 1), "message": "Lecture de Squash"}
