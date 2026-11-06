@@ -13,6 +13,8 @@ Scénario pour /analyser <projet> :
   3. rend un compte rendu.
 Scénario pour /tester <projet> campagne <id> : copie les résultats d'exécution de référence de
 projets/saucedemo/04-livrables/execution-reference dans la campagne, puis rend un compte rendu.
+Scénario pour /automatiser <projet> generation <id> : copie les scripts de référence de
+projets/saucedemo/04-livrables/automatisation-reference dans le dépôt et la génération, puis rend un compte rendu.
 Pour toute autre demande : répond un texte court.
 
 Lancement : python saas/dev/faux_modele.py [port]   (défaut 4010)
@@ -48,6 +50,17 @@ def decider(corps):
                                       "description": "Résultats d'exécution de référence (faux modèle)"})
         return ("texte", "Exécution terminée (faux modèle de démonstration) : 26 cas réussis, 1 échoué (CT0027, anomalie "
                          "majeure : commande possible avec un panier vide), 0 bloqué. 2 corrections de cas proposées.")
+    generation = re.search(r"projet\s+«\s*([a-z0-9][a-z0-9-]*)\s+generation\s+(\d{8}-\d{6})", utilisateur)
+    if "bash" in outils and generation and "scripts Playwright" in utilisateur:
+        projet, ident = generation.groups()
+        ref = "projets/saucedemo/04-livrables/automatisation-reference"
+        dst = f"projets/{projet}"
+        if not resultats:
+            return ("outil", "bash", {"command": f"cp -r {ref}/depot/. {dst}/05-automatisation/ && "
+                                                 f"cp -r {ref}/resultats/. {dst}/04-livrables/automatisation/{ident}/resultats/",
+                                      "description": "Scripts de référence (faux modèle)"})
+        return ("texte", "Scripts écrits (faux modèle de démonstration) : CT0001, CT0002 et CT0003 dans "
+                         "tests/authentification/authentification.spec.js, locators relevés sur SauceDemo.")
     if "bash" not in outils or not m or "analyse" not in utilisateur.lower():
         return ("texte", "Réponse du faux modèle de démonstration.")
     projet = m.group(1)

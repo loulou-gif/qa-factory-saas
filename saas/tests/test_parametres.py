@@ -71,7 +71,8 @@ def test_connexion_par_utilisateur(espace):
     r = c.get("/projets/saucedemo/squash/projets", headers={"Accept": "application/json"})
     assert r.status_code == 409 and "Connectez d'abord votre Squash" in r.json()["erreur"]
     assert jx(c, "/projets/saucedemo/squash/simuler", {"squash_id": "28"}, "/projets/saucedemo").status_code == 409
-    assert 'href="/parametres/squash"' in c.get("/projets").text
+    assert 'href="/parametres"' in c.get("/projets").text  # menu latéral, Paramètres tout en bas
+    assert 'href="/parametres/squash"' in c.get("/parametres").text
 
     # Erreurs expliquées, rien d'enregistré
     assert "refuse ce compte" in html.unescape(regler_squash(c, adresse(squash), secret="mauvais").text)

@@ -2,6 +2,7 @@
 {% block titre %}Mon compte · QA Factory{% endblock %}
 {% block contenu %}
 <div class="boite" style="margin-top:2vh">
+  <a class="retour" href="/parametres">Retour aux paramètres</a>
   <h1>Mon compte</h1>
   <p class="discret">{{ u.nom }} · {{ ROLES[u.role] }}</p>
   {% if u.doit_changer %}<div class="message">Choisissez votre mot de passe personnel pour commencer.</div>{% endif %}

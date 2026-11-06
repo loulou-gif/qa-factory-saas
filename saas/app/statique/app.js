@@ -88,15 +88,19 @@
           cible = 100; termine = true;
           setTimeout(function () {
             zone.classList.add('fini');
-            phrase.textContent = d.type === 'tester' ? 'Tests terminés' : 'Génération terminée';
-            if (aide) aide.textContent = d.type === 'tester' ? 'Ouverture des résultats…' : 'Ouverture de vos fichiers…';
+            phrase.textContent = d.type === 'tester' ? 'Tests terminés' : (d.type === 'automatiser' ? 'Scripts écrits'
+              : (d.type === 'executer-scripts' ? 'Scripts exécutés' : (d.type === 'manuel' ? 'Manuel rédigé' : 'Génération terminée')));
+            if (aide) aide.textContent = ['tester', 'automatiser', 'executer-scripts'].indexOf(d.type) >= 0 ? 'Ouverture des résultats…'
+              : (d.type === 'manuel' ? 'Ouverture du manuel…' : 'Ouverture de vos fichiers…');
             setTimeout(fini, 1600);
           }, 700);
           return;
         }
         if (!d.actif) {
           zone.classList.remove('travail'); zone.classList.add('echec');
-          phrase.textContent = d.type === 'tester' ? "Les tests n'ont pas abouti" : "La génération n'a pas abouti";
+          phrase.textContent = d.type === 'tester' ? "Les tests n'ont pas abouti" : (d.type === 'automatiser' ? "Les scripts n'ont pas été écrits"
+            : (d.type === 'executer-scripts' ? "Les scripts n'ont pas été exécutés"
+              : (d.type === 'manuel' ? "Le manuel n'a pas été rédigé" : "La génération n'a pas abouti")));
           if (aide) aide.textContent = d.erreur || '';
           zone.dispatchEvent(new CustomEvent('echec'));
           return;
@@ -577,6 +581,65 @@
     });
   }
 
+  /* ---------- automatisation : choix des scénarios et du langage ---------- */
+  function automatisation(zone) {
+    if (!zone) return;
+    executionScripts(zone);
+    var cases = zone.querySelectorAll('[data-scenario]'), bouton = document.getElementById('generer');
+    var compte = document.getElementById('compte-scenarios'), actif = !bouton.disabled;
+    function choisis() {
+      return Array.prototype.filter.call(cases, function (c) { return c.checked; }).map(function (c) { return c.value; });
+    }
+    function maj() {
+      var n = choisis().length;
+      compte.textContent = n + ' scénario' + (n > 1 ? 's' : '') + ' coché' + (n > 1 ? 's' : '');
+      bouton.textContent = n ? 'Générer ' + n + ' script' + (n > 1 ? 's' : '') : 'Générer les scripts';
+      bouton.disabled = !actif || !n;
+    }
+    cases.forEach(function (c) { c.addEventListener('change', maj); });
+    maj();
+    bouton.addEventListener('click', function () {
+      var liste = choisis(), lang = zone.querySelector('input[name=langage]:checked');
+      if (!liste.length) return;
+      var libelle = lang && lang.value === 'ts' ? 'TypeScript' : 'JavaScript';
+      dialogue('Générer ' + liste.length + ' script' + (liste.length > 1 ? 's' : '') + ' ?', [
+        el('p', { texte: "L'assistant ouvre l'application dans un navigateur dédié pour relever les libellés et les locators réels, puis écrit les scripts en " + libelle + '. Comptez quelques minutes par scénario.' }),
+        el('p', { 'class': 'discret petit', texte: 'Scénarios : ' + liste.join(', ') })
+      ], [{ libelle: 'Annuler', valeur: false }, { libelle: 'Générer', valeur: true, principal: true }]).then(function (ok) {
+        if (!ok) return;
+        bouton.disabled = true; bouton.textContent = 'Démarrage…';
+        api('/projets/' + zone.getAttribute('data-projet') + '/automatiser', { cas: liste, langage: lang ? lang.value : 'js' })
+          .then(function (r) { location.href = r.redirection; })
+          .catch(function (e) {
+            maj();
+            dialogue('Génération non lancée', [el('p', { texte: e.message })], [{ libelle: 'Compris', valeur: true, principal: true }]);
+          });
+      });
+    });
+  }
+
+  /* ---------- exécution des scripts du dépôt (sans IA) ---------- */
+  function executionScripts(zone) {
+    var bouton = document.getElementById('executer');
+    if (!bouton) return;
+    bouton.addEventListener('click', function () {
+      var n = parseInt(bouton.getAttribute('data-nombre'), 10) || 0;
+      dialogue('Exécuter ' + n + ' script' + (n > 1 ? 's' : '') + ' ?', [
+        el('p', { texte: "Les scripts sont lancés sur l'application avec les comptes de test du projet, dans un navigateur limité à ses domaines. Aucune IA n'intervient : le résultat est celui de Playwright." }),
+        el('p', { 'class': 'discret petit', texte: "Ils sont d'abord contrôlés : un script qui sort du navigateur (fichiers, réseau, autre site) bloque l'exécution." })
+      ], [{ libelle: 'Annuler', valeur: false }, { libelle: 'Exécuter', valeur: true, principal: true }]).then(function (ok) {
+        if (!ok) return;
+        bouton.disabled = true; bouton.textContent = 'Démarrage…';
+        api('/projets/' + zone.getAttribute('data-projet') + '/executer-scripts', {})
+          .then(function (r) { location.href = r.redirection; })
+          .catch(function (e) {
+            bouton.disabled = false; bouton.textContent = 'Exécuter les scripts';
+            dialogue('Exécution non lancée', [el('p', { texte: e.message })], [{ libelle: 'Compris', valeur: true, principal: true }]);
+          });
+      });
+    });
+  }
+
   /* ---------- questions : réponses et faux positifs ---------- */
   function questions(conteneur) {
     if (!conteneur) return;
@@ -654,6 +717,42 @@
     window.addEventListener('beforeunload', function (e) { if (Object.keys(modifies).length) { e.preventDefault(); e.returnValue = ''; } });
   }
 
+  /* ---------- documents de recette : rédaction du manuel ---------- */
+  function redigerManuel(form) {
+    if (!form) return;
+    var erreur = form.querySelector('[data-erreur]'), bouton = form.querySelector('button[type=submit]');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var choisies = Array.prototype.filter.call(form.querySelectorAll('input[name=fonctionnalite]'), function (c) { return c.checked; })
+        .map(function (c) { return c.value; });
+      erreur.hidden = true;
+      if (!choisies.length) { erreur.textContent = 'Cochez au moins une fonctionnalité à décrire.'; erreur.hidden = false; return; }
+      bouton.disabled = true; bouton.textContent = 'Lancement…';
+      api('/projets/' + form.getAttribute('data-projet') + '/manuel', { fonctionnalites: choisies }).then(function () {
+        location.reload();
+      }).catch(function (x) { bouton.disabled = false; bouton.textContent = 'Rédiger le manuel'; erreur.textContent = x.message; erreur.hidden = false; });
+    });
+  }
+
+  /* ---------- menu latéral (écrans étroits) ---------- */
+  (function () {
+    var bouton = document.querySelector('.bouton-menu'), voile = document.querySelector('.voile-menu');
+    if (!bouton) return;
+    function basculer(ouvrir) {
+      document.body.classList.toggle('menu-ouvert', ouvrir);
+      bouton.setAttribute('aria-expanded', ouvrir ? 'true' : 'false');
+      bouton.setAttribute('aria-label', ouvrir ? 'Fermer le menu' : 'Ouvrir le menu');
+      if (voile) voile.hidden = !ouvrir;
+      if (ouvrir) { var premier = document.querySelector('.menu-lateral a'); if (premier) premier.focus(); }
+    }
+    bouton.addEventListener('click', function () { basculer(!document.body.classList.contains('menu-ouvert')); });
+    if (voile) voile.addEventListener('click', function () { basculer(false); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && document.body.classList.contains('menu-ouvert')) { basculer(false); bouton.focus(); }
+    });
+  })();
+
   window.QAF = { depot: depot, suivreTache: suivreTache, cas: cas, squash: squash, questions: questions, jeux: jeux,
-                 lancerTests: lancerTests, modifications: modifications };
+                 lancerTests: lancerTests, modifications: modifications,
+                 automatisation: automatisation, redigerManuel: redigerManuel };
 })();

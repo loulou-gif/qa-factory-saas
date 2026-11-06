@@ -1,0 +1,7 @@
+{
+  "id": "CT0002",
+  "statut": "genere",
+  "fichier": "tests/authentification/authentification.spec.js",
+  "locators_verifies": true,
+  "remarque": ""
+}

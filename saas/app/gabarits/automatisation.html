@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block titre %}Automatiser · {{ fiche.nom }}{% endblock %}
+{% block contenu %}
+<div class="etroit large-resultats" id="automatisation" data-projet="{{ code }}">
+  <a class="retour" href="/projets/{{ code }}">Retour au projet</a>
+  <h1>Automatiser les tests</h1>
+  <p class="sous-titre">L'assistant écrit les scripts Playwright des scénarios cochés, en relevant les vrais libellés et locators sur {{ app_.url or "l'application" }}.
+    Les scénarios sont classés par intérêt à automatiser.</p>
+
+  {% if not app_.url %}
+  <div class="message alerte" style="animation:none">Indiquez d'abord le lien et les comptes de test de l'application. <a href="/projets/{{ code }}/application">Renseigner l'application</a></div>
+  {% endif %}
+
+  {% if pr.automatises %}
+  {% set dx = ex.derniere %}{% set classes = {'reussi': 'reussi', 'echoue': 'echoue', 'instable': 'bloque'} %}
+  <section class="encadre execution-scripts" id="execution" aria-labelledby="titre-execution">
+    <h2 id="titre-execution">Exécuter les scripts</h2>
+    {% if dx %}{% set sx = dx.statistiques %}{% set fx = dx.execution %}
+    <p>Exécution du {{ fx.debut[:16]|replace('T', ' à ') }}{% if fx.par %} par {{ fx.par }}{% endif %}{% if fx.duree_s %}, en {% if fx.duree_s >= 60 %}{{ fx.duree_s // 60 }} min {% endif %}{{ fx.duree_s % 60 }} s{% endif %} :</p>
+    <p class="chiffres-execution">
+      <span class="etat reussi">{{ sx.reussi }} réussi{{ 's' if sx.reussi > 1 }}</span>
+      <span class="etat echoue">{{ sx.echoue }} échoué{{ 's' if sx.echoue > 1 }}</span>
+      {% if sx.instable %}<span class="etat bloque">{{ sx.instable }} instable{{ 's' if sx.instable > 1 }}</span>{% endif %}
+      {% if sx.ignore %}<span class="etat">{{ sx.ignore }} ignoré{{ 's' if sx.ignore > 1 }}</span>{% endif %}
+      {% if sx.non_execute %}<span class="etat">{{ sx.non_execute }} non exécuté{{ 's' if sx.non_execute > 1 }}</span>{% endif %}
+    </p>
+    {% if fx.arretee %}<p class="petit texte-alerte">Exécution arrêtée avant la fin.</p>{% endif %}
+    {% for err in dx.erreurs %}<pre class="erreur-script">{{ err }}</pre>{% endfor %}
+    <ul class="liste-scripts">
+      {% for r in dx.resultats %}
+      <li><span class="id">{{ r.id }}</span>
+        <span class="texte"><span>{{ r.titre }}</span>
+          <span class="discret petit">{{ r.fichier }}{% if r.duree_ms %} · {{ '%.1f'|format(r.duree_ms / 1000) }} s{% endif %}{% if r.essais > 1 %} · {{ r.essais }} essais{% endif %}</span>
+          {% if r.erreur %}<details class="petit"><summary>Erreur</summary><pre class="erreur-script">{{ r.erreur }}</pre></details>{% endif %}
+          {% if r.remarque %}<span class="discret petit">{{ r.remarque }}</span>{% endif %}</span>
+        <span class="etat {{ classes.get(r.statut, '') }}">{{ statuts_ex[r.statut] }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if dx.typescript %}
+    <details class="petit"><summary>{{ dx.typescript|length }} remarque{{ 's' if dx.typescript|length > 1 }} TypeScript (les tests s'exécutent quand même)</summary>
+      <ul>{% for x in dx.typescript %}<li>{{ x }}</li>{% endfor %}</ul></details>
+    {% endif %}
+    {% for a in dx.avertissements %}<p class="discret petit">{{ a }}</p>{% endfor %}
+    <p class="petit">
+      {% if dx.rapport %}<a href="/projets/{{ code }}/automatisation/executions/{{ fx.id }}/rapport/index.html" target="_blank" rel="noopener">Ouvrir le rapport Playwright</a> · {% endif %}
+      <a href="/projets/{{ code }}/telecharger/{{ chemin_depot }}/docs/test-inventory.md">inventaire</a>
+      {% if ex.historique|length > 1 %} · exécutions précédentes :
+        {% for h in ex.historique if h != fx.id %}<a href="/projets/{{ code }}/automatisation?execution={{ h }}#execution">{{ h[6:8] }}/{{ h[4:6] }} {{ h[9:11] }}:{{ h[11:13] }}</a>{{ ', ' if not loop.last }}{% endfor %}
+      {% endif %}
+    </p>
+    {% else %}
+    <p>Les {{ pr.automatises }} scénarios automatisés n'ont pas encore été exécutés depuis l'application.</p>
+    {% endif %}
+    {% if not playwright_ok %}<div class="message alerte" style="animation:none">{{ playwright_detail }}</div>{% endif %}
+    <div class="actions-execution">
+      <button class="bouton" type="button" id="executer" data-nombre="{{ pr.automatises }}"
+              {% if occupe or not app_.url or not playwright_ok %}disabled{% endif %}
+              {% if occupe %}title="Une tâche est en cours sur ce projet"{% endif %}>Exécuter {{ 'le script' if pr.automatises == 1 else 'les ' ~ pr.automatises ~ ' scripts' }}</button>
+      <a class="lien-bouton" href="/projets/{{ code }}/automatisation/archive">Télécharger les scripts (.zip)</a>
+    </div>
+    <p class="discret petit">Sans IA : Playwright lance les tests avec les comptes de test du projet, dans un navigateur limité aux domaines de l'application.</p>
+  </section>
+  {% endif %}
+
+  {% if derniere %}
+  {% set ds = derniere.statistiques %}{% set dg = derniere.generation %}
+  <section class="encadre derniere-generation" aria-labelledby="titre-derniere">
+    <h2 id="titre-derniere">Dernière génération</h2>
+    <p>Le {{ dg.debut[:16]|replace('T', ' à ') }}{% if dg.par %} par {{ dg.par }}{% endif %}, en {{ dg.langage_libelle }} :
+      <strong>{{ ds.generes }} script{{ 's' if ds.generes > 1 }} écrit{{ 's' if ds.generes > 1 }}</strong>{% if ds.non_generes %}, <strong class="texte-erreur">{{ ds.non_generes }} non généré{{ 's' if ds.non_generes > 1 }}</strong>{% endif %}.
+      {{ ds.locators_verifies }} sur {{ ds.generes }} ont tous leurs locators vérifiés dans l'application.</p>
+    <ul class="liste-scripts">
+      {% for r in derniere.resultats %}
+      <li><span class="id">{{ r.id }}</span>
+        <span class="texte"><span>{{ r.titre }}</span>
+          {% if r.fichier %}<a class="petit" href="/projets/{{ code }}/telecharger/{{ chemin_depot }}/{{ r.fichier }}">{{ r.fichier }}</a>{% endif %}
+          {% if r.remarque %}<span class="discret petit">{{ r.remarque }}</span>{% endif %}</span>
+        {% if r.statut == 'non_genere' %}<span class="etat echoue">Non généré</span>
+        {% elif r.locators_verifies %}<span class="etat reussi">Locators vérifiés</span>
+        {% else %}<span class="etat bloque">À vérifier</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if derniere.avertissements %}<p class="discret petit">{{ derniere.avertissements|join(' · ') }}</p>{% endif %}
+    <p class="petit">Le dépôt compte {{ pr.automatises }} scénario{{ 's' if pr.automatises > 1 }} automatisé{{ 's' if pr.automatises > 1 }} ·
+      <a href="/projets/{{ code }}/telecharger/{{ chemin_depot }}/docs/test-inventory.md">inventaire</a>.</p>
+  </section>
+  {% endif %}
+
+  <fieldset class="choix-mode choix-langage">
+    <legend>Langage des scripts</legend>
+    {% for k, lib in langages.items() %}
+    <label><input type="radio" name="langage" value="{{ k }}" {{ 'checked' if (pr.langage or 'js') == k }} {{ 'disabled' if pr.langage and pr.langage != k }}> {{ lib }}</label>
+    {% endfor %}
+    {% if pr.langage %}<p class="discret petit">Le dépôt du projet est en {{ langages[pr.langage] }} : il garde un seul langage.</p>{% endif %}
+  </fieldset>
+
+  <p class="discret petit critere">Classement : criticité des exigences et importance du cas, parcours nominal (le plus utilisé),
+    stabilité observée {% if pr.tests_du %}aux tests du {{ pr.tests_du[8:10] }}/{{ pr.tests_du[5:7] }}/{{ pr.tests_du[:4] }}{% else %}(aucun test encore lancé){% endif %}, coût (nombre d'étapes).</p>
+
+  {% for k, libelle, liste in groupes if liste %}
+  <section class="groupe-prio {{ k }}" aria-labelledby="titre-{{ k }}">
+    {% if k == 'deconseille' %}<details><summary><h2 id="titre-{{ k }}">{{ libelle }} ({{ liste|length }})</h2></summary>{% else %}
+    <h2 id="titre-{{ k }}">{{ libelle }} <span class="discret">({{ liste|length }})</span></h2>{% endif %}
+    <ul class="liste-prio">
+      {% for c in liste %}
+      <li>
+        <label class="prio">
+          <input type="checkbox" value="{{ c.id }}" data-scenario {{ 'checked' if c.coche }}>
+          <span class="texte">
+            <span class="ligne-titre"><span class="id">{{ c.id }}</span> {{ c.titre }}
+              {% if c.script %}<span class="pastille ok">Déjà automatisé</span>{% endif %}
+              {% if c.dernier_resultat %}<span class="etat {{ classes.get(c.dernier_resultat, '') if classes else '' }}">{{ statuts_ex[c.dernier_resultat] }}</span>{% endif %}</span>
+            <span class="discret petit">{{ c.fonctionnalite }} · note {{ c.note }}{% if c.raisons %} · {{ c.raisons|join(', ') }}{% endif %}</span>
+            {% if c.deconseille %}<span class="petit texte-alerte">{{ c.deconseille|capitalize }}</span>{% endif %}
+            {% for a in c.alertes %}<span class="petit texte-alerte">{{ a|capitalize }}</span>{% endfor %}
+          </span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if k == 'deconseille' %}</details>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+<div class="barre-bas"><div class="interieur">
+  <span class="discret" id="compte-scenarios" aria-live="polite"></span>
+  <button class="bouton" type="button" id="generer" {% if occupe or not app_.url %}disabled{% endif %}
+          {% if occupe %}title="Une tâche est en cours sur ce projet"{% endif %}>Générer les scripts</button>
+</div></div>
+{% endblock %}
+{% block script %}<script>QAF.automatisation(document.getElementById('automatisation'));</script>{% endblock %}

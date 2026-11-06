@@ -14,20 +14,21 @@ from contextlib import asynccontextmanager
 from typing import List
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import campagnes, connexions, projets
+from . import campagnes, connexions, parametres, projets, relais_ia
 from .config import ICI, reglages
 from .db import STATUTS_ACTIFS, Base, maintenant
 from .moteur import ErreurMoteur, moteur
 from .securite import ROLES, controler_csrf, hacher, jeton_csrf, mot_de_passe_valable, verifier
-from .taches import ErreurTache, gestionnaire, progression
+from .taches import STATUTS as STATUTS_TACHES, TYPES as TYPES_TACHES, ErreurTache, gestionnaire, progression
 
 reglages.preparer()
 import vues_cas  # noqa: E402  (outils/ est ajouté au chemin par reglages.preparer)
+from qa_commun import fonctionnalites as fonctionnalites_cas  # noqa: E402
 
 base = Base(reglages.base)
 
@@ -139,11 +140,37 @@ def resume_tests(code) -> dict:
             "mods_en_attente": len(mods) if mods and not any(m.get("decision") for m in mods) else 0}
 
 
+def resume_automatisation(code, e) -> dict:
+    """Scénarios déjà automatisés et dernière génération, pour la page du projet."""
+    if not e.get("valide"):
+        return {}
+    import automatisation as outil
+    import execution_scripts
+    try:
+        r = outil.resume(code)
+        r["execution"] = (execution_scripts.resume(code) or {}).get("derniere")
+        return r
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def resume_documents_projet(code, e) -> dict:
+    """Derniers cahier de tests et manuel produits, pour la page du projet."""
+    if not e.get("valide"):
+        return {}
+    import manuel as outil
+    try:
+        c, r = cahiers_produits(code), outil.redactions(code)
+    except Exception:  # noqa: BLE001
+        return {}
+    return {"cahier": c[0] if c else None, "manuel": r[0] if r else None}
+
+
 def connexion_exigee(u):
     """Connexion Squash de l'utilisateur, ou erreur 409 qui l'invite à la régler."""
     cx = connexions.lire(base, u["id"])
     if not cx:
-        raise HTTPException(409, "Connectez d'abord votre Squash : page Squash, en haut de l'écran.")
+        raise HTTPException(409, "Connectez d'abord votre Squash : Paramètres > Connexion Squash, en bas du menu.")
     return cx
 
 
@@ -312,6 +339,10 @@ def tache_progression(request: Request, tid: int):
         reponse["non_mis_a_jour"] = r.get("non_mis_a_jour") or []
     if t["type"] == "tester":
         reponse["campagne"] = (t["parametres"] or {}).get("campagne")
+    if t["type"] == "automatiser":
+        reponse["generation"] = (t["parametres"] or {}).get("generation")
+    if t["type"] == "executer-scripts":
+        reponse["execution"] = (t["parametres"] or {}).get("execution")
     return reponse
 
 
@@ -390,7 +421,7 @@ def fichiers_page(request: Request, code: str):
                 bloques=len(projets.cas_bloques(code, "03-valide")) if e["valide"] and not e["a_valider"] else 0,
                 a_envoyer=a_envoyer(code, e),
                 a_maj=projets.a_mettre_a_jour(code) if e["valide"] and not e["a_valider"] and e["publie"] else [], squash_cx=connexions.resume(connexions.lire(base, u["id"])),
-                **resume_tests(code))
+                automatisation=resume_automatisation(code, e), documents=resume_documents_projet(code, e), **resume_tests(code))
 
 
 @app.get("/projets/{code}/cas", response_class=HTMLResponse)
@@ -823,6 +854,146 @@ async def modifications_appliquer(request: Request, code: str):
     return {"ok": True, "redirection": f"/projets/{code}"}
 
 
+# ---------------------------------------------------------------- automatisation Playwright (temps B, lot 3)
+
+@app.get("/projets/{code}/automatisation", response_class=HTMLResponse)
+def automatisation_page(request: Request, code: str, execution: str = ""):
+    u = utilisateur(request)
+    exiger_projet(code)
+    e = projets.etat(code)
+    if not e["valide"] or e["a_valider"]:
+        raise HTTPException(409, "Les cas doivent être validés (et aucune relecture en cours) avant d'être automatisés.")
+    import automatisation as outil
+    try:
+        pr = outil.priorites(code)
+    except outil.ErreurAutomatisation as ex:
+        raise HTTPException(409, str(ex))
+    import execution_scripts
+    groupes = [(k, lib, [c for c in pr["cas"] if c["niveau"] == k]) for k, lib in outil.NIVEAUX.items()]
+    r = outil.resume(code)
+    ex = execution_scripts.resume(code)
+    if execution:
+        try:
+            ex["derniere"] = json.loads((execution_scripts.dossier_execution(projets.dossier(code), execution) / "synthese.json")
+                                        .read_text(encoding="utf-8"))
+        except (execution_scripts.ErreurExecutionScripts, OSError, ValueError):
+            raise HTTPException(404, "Exécution introuvable.")
+    statuts_ex = ex["statuts"]
+    for c in pr["cas"]:
+        c["dernier_resultat"] = statuts_ex.get(c["id"], "") if c["script"] else ""
+    active = gestionnaire.active(code)
+    pw_ok, pw_detail = execution_scripts.disponible()
+    return page(request, "automatisation.html", u=u, code=code, fiche=projets.fiche(code), pr=pr, groupes=groupes,
+                langages=outil.LANGAGES, derniere=r["derniere"], statuts=outil.STATUTS, app_=campagnes.application(code),
+                nb_comptes=len(campagnes.comptes(base, code)), occupe=active,
+                chemin_depot=outil.DEPOT, ex=ex, statuts_ex=execution_scripts.STATUTS, playwright_ok=pw_ok, playwright_detail=pw_detail)
+
+
+@app.post("/projets/{code}/automatiser")
+async def automatiser(request: Request, code: str):
+    corps = await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    e = projets.etat(code)
+    if not e["valide"] or e["a_valider"]:
+        raise HTTPException(409, "Les cas doivent être validés (et aucune relecture en cours) avant d'être automatisés.")
+    if not campagnes.application(code)["url"]:
+        raise HTTPException(409, "Indiquez d'abord le lien de l'application à tester.")
+    import automatisation as outil
+    cas = [str(x) for x in corps.get("cas") or [] if isinstance(x, str)][:60]
+    langage = str(corps.get("langage") or "js")
+    if not cas:
+        raise HTTPException(400, "Cochez au moins un scénario à automatiser.")
+    if langage not in outil.LANGAGES:
+        raise HTTPException(400, "Langage inconnu.")
+    deja = outil.langage_depot(projets.dossier(code))
+    if deja and deja != langage:
+        raise HTTPException(409, f"Le dépôt d'automatisation est déjà en {outil.LANGAGES[deja]}.")
+    connus = {c["id"] for c in (projets.charger_cas(code, "03-valide") or {}).get("cas_de_tests") or []}
+    inconnus = [x for x in cas if x not in connus]
+    if inconnus:
+        raise HTTPException(400, f"Cas inconnu(s) : {', '.join(inconnus[:5])}.")
+    ok, detail = moteur.disponible()
+    if not ok:
+        raise HTTPException(503, f"L'assistant est indisponible ({detail}). Prévenez l'administrateur.")
+    try:
+        tid = gestionnaire.soumettre(code, "automatiser", u, {"cas": cas, "langage": langage})
+    except ErreurTache as ex:
+        raise HTTPException(409, str(ex))
+    return {"tache": tid, "redirection": f"/projets/{code}"}
+
+
+# ---------------------------------------------------------------- exécution des scripts (temps B, lot 4)
+
+@app.post("/projets/{code}/executer-scripts")
+async def executer_scripts(request: Request, code: str):
+    corps = await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    import automatisation as outil
+    import execution_scripts
+    if not campagnes.application(code)["url"]:
+        raise HTTPException(409, "Indiquez d'abord le lien de l'application à tester.")
+    existants = outil.scripts_existants(projets.dossier(code))
+    if not existants:
+        raise HTTPException(409, "Aucun script à exécuter : générez d'abord des scripts.")
+    cas = [str(x) for x in corps.get("cas") or [] if isinstance(x, str)][:200]
+    inconnus = [x for x in cas if x not in existants]
+    if inconnus:
+        raise HTTPException(400, f"Aucun script pour : {', '.join(inconnus[:5])}.")
+    ok, detail = execution_scripts.disponible()
+    if not ok:
+        raise HTTPException(503, detail)
+    try:
+        tid = gestionnaire.soumettre(code, "executer-scripts", u, {"cas": cas})
+    except ErreurTache as ex:
+        raise HTTPException(409, str(ex))
+    return {"tache": tid, "redirection": f"/projets/{code}"}
+
+
+MEDIAS_RAPPORT = {".html": "text/html; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                  ".webm": "video/webm", ".gif": "image/gif"}
+
+
+@app.get("/projets/{code}/automatisation/executions/{ident}/rapport/{chemin:path}")
+def rapport_playwright(request: Request, code: str, ident: str, chemin: str):
+    """Rapport HTML de Playwright. Seul index.html (écrit par Playwright) s'affiche comme page ; les pièces jointes
+    autres qu'images et vidéos sont téléchargées, dans un bac à sable."""
+    utilisateur(request)
+    exiger_projet(code)
+    import execution_scripts
+    try:
+        e = execution_scripts.dossier_execution(projets.dossier(code), ident)
+    except execution_scripts.ErreurExecutionScripts:
+        raise HTTPException(404, "Rapport introuvable.")
+    racine = (e / "rapport").resolve()
+    f = (racine / (chemin or "index.html")).resolve()
+    if racine not in f.parents or not f.is_file():
+        raise HTTPException(404, "Rapport introuvable.")
+    rel = f.relative_to(racine).as_posix()
+    entetes = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=300"}
+    media = MEDIAS_RAPPORT.get(f.suffix.lower())
+    if rel == "index.html":
+        return FileResponse(f, media_type=media, headers=entetes)
+    entetes["Content-Security-Policy"] = "sandbox; default-src 'none'"
+    if media and f.suffix.lower() != ".html":
+        return FileResponse(f, media_type=media, headers=entetes)
+    return FileResponse(f, media_type="application/octet-stream", filename=f.name, headers=entetes)
+
+
+@app.get("/projets/{code}/automatisation/archive")
+def archive_scripts(request: Request, code: str):
+    u = utilisateur(request)
+    exiger_projet(code)
+    import execution_scripts
+    try:
+        nom, contenu = execution_scripts.archive(code)
+    except execution_scripts.ErreurExecutionScripts as ex:
+        raise HTTPException(404, str(ex))
+    base.auditer(u["id"], code, "telechargement", "archive des scripts")
+    return Response(contenu, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{nom}"'})
+
+
 # ---------------------------------------------------------------- administration
 
 def exiger_admin(request):
@@ -885,3 +1056,334 @@ def admin_modifier(request: Request, uid: int, action: str = Form(...), role: st
             flash(request, f"Mot de passe de {cible['identifiant']} réinitialisé (à changer à la prochaine connexion).", "ok")
     base.auditer(u["id"], None, f"utilisateur:{action}", cible["identifiant"])
     return RedirectResponse("/admin/utilisateurs", status_code=303)
+
+
+# ---------------------------------------------------------------- documents de recette (cahier de tests, manuel)
+
+def exiger_role(request, *roles):
+    u = utilisateur(request)
+    if u["role"] not in roles:
+        raise HTTPException(403, "Réservé aux " + " et aux ".join({"admin": "administrateurs", "responsable": "responsables de projet",
+                                                                    "testeur": "testeurs"}[r] for r in roles) + ".")
+    return u
+
+
+def cahiers_produits(code) -> list:
+    d = projets.dossier(code) / "04-livrables" / "cahier"
+    res = []
+    for f in sorted(d.glob("*.xlsx"), key=lambda x: x.stat().st_mtime, reverse=True) if d.exists() else []:
+        if f.name.startswith(("~$", ".")):
+            continue
+        from datetime import datetime
+        res.append({"nom": f.name, "chemin": f"04-livrables/cahier/{f.name}", "taille": f.stat().st_size,
+                    "date": datetime.fromtimestamp(f.stat().st_mtime).strftime("%d/%m/%Y à %H:%M")})
+    return res
+
+
+@app.get("/projets/{code}/documents", response_class=HTMLResponse)
+def documents_page(request: Request, code: str):
+    u = utilisateur(request)
+    exiger_projet(code)
+    e = projets.etat(code)
+    import manuel as outil_manuel
+    data = projets.charger_cas(code, "03-valide") if e["valide"] else None
+    fonctions = fonctionnalites_cas(data) if data else []
+    active = gestionnaire.active(code)
+    redactions = outil_manuel.redactions(code) if e["valide"] else []
+    echec = derniere_tache(code, "manuel")
+    if echec and (echec["statut"] != "echec" or (redactions and redactions[0]["redaction"] == (echec["parametres"] or {}).get("redaction"))):
+        echec = None
+    return page(request, "documents.html", u=u, code=code, fiche=projets.fiche(code), e=e, fonctions=fonctions,
+                cas_par_fonction={f: sum(1 for c in data["cas_de_tests"] if c.get("fonctionnalite") == f) for f in fonctions} if data else {},
+                nb_nominaux=sum(1 for c in (data or {}).get("cas_de_tests", []) if c.get("type") == "nominal"),
+                cahiers=cahiers_produits(code), redactions=redactions[:5], modeles=parametres.resume_documents(base),
+                app_=campagnes.application(code), nb_comptes=len(campagnes.comptes(base, code)), active=active,
+                echec_manuel=echec, modele_ia=parametres.modele_pour(base, "manuel"),
+                peut_modeles=u["role"] in ("admin", "responsable"))
+
+
+@app.post("/projets/{code}/cahier")
+def generer_cahier(request: Request, code: str, nominaux: str = Form(""), csrf: str = Form("")):
+    """Cahier de tests depuis les cas validés, au modèle de l'entreprise s'il a été déposé (sans IA, quelques secondes)."""
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    e = projets.etat(code)
+    if not e["valide"]:
+        raise HTTPException(409, "Le cahier se génère depuis les cas validés : enregistrez d'abord la relecture.")
+    modele = parametres.chemin_modele("cahier")
+    args = [code, "--sans-exploration"] + (["--nominaux"] if nominaux else []) + (["--modele", str(modele)] if modele else [])
+    r = projets.script("build_cahier.py", *args, timeout=300)
+    if r.returncode:
+        detail = (r.stderr or r.stdout or "").strip().splitlines()[-1:] or ["erreur inconnue"]
+        flash(request, "Le cahier n'a pas pu être généré : " + detail[0].replace("ERREUR : ", ""), "erreur")
+    else:
+        base.auditer(u["id"], code, "cahier", "modèle de l'entreprise" if modele else "modèle interne")
+        flash(request, "Cahier de tests généré" + (" au modèle de l'entreprise." if modele else " au modèle interne.")
+              + (" Parcours nominaux uniquement." if nominaux else ""), "ok")
+    return RedirectResponse(f"/projets/{code}/documents#cahier", status_code=303)
+
+
+@app.post("/projets/{code}/manuel")
+async def rediger_manuel(request: Request, code: str):
+    corps = await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    e = projets.etat(code)
+    if not e["valide"]:
+        raise HTTPException(409, "Le manuel se rédige à partir des cas validés : enregistrez d'abord la relecture.")
+    if not campagnes.application(code)["url"]:
+        raise HTTPException(409, "Indiquez d'abord le lien de l'application à décrire.")
+    connues = fonctionnalites_cas(projets.charger_cas(code, "03-valide") or {})
+    choisies = [f for f in corps.get("fonctionnalites") or [] if isinstance(f, str) and f in connues]
+    if not choisies:
+        raise HTTPException(400, "Cochez au moins une fonctionnalité à décrire.")
+    ok, detail = moteur.disponible()
+    if not ok:
+        raise HTTPException(503, f"L'assistant est indisponible ({detail}). Prévenez l'administrateur.")
+    try:
+        tid = gestionnaire.soumettre(code, "manuel", u, {"fonctionnalites": choisies})
+    except ErreurTache as ex:
+        raise HTTPException(409, str(ex))
+    return {"tache": tid, "redirection": f"/projets/{code}/documents"}
+
+
+@app.post("/projets/{code}/manuel/{ident}/mise-en-page")
+def manuel_mise_en_page(request: Request, code: str, ident: str, csrf: str = Form("")):
+    """Remet en page une rédaction déjà faite avec le modèle Word actuel (après le dépôt d'un nouveau modèle), sans IA."""
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    if gestionnaire.active(code):
+        raise HTTPException(409, "Une tâche est en cours sur ce projet : attendre sa fin.")
+    import manuel as outil
+    _, valeurs = campagnes.secrets(base, code)
+    try:
+        s = outil.construire(code, ident, parametres.chemin_modele("manuel"), secrets=valeurs.values())
+    except outil.ErreurManuel as ex:
+        flash(request, str(ex), "erreur")
+    else:
+        base.auditer(u["id"], code, "manuel-mise-en-page", ident)
+        flash(request, "Manuel remis en page avec le modèle " + ("de l'entreprise." if s["modele"] == "entreprise" else "interne."), "ok")
+    return RedirectResponse(f"/projets/{code}/documents#manuel", status_code=303)
+
+
+# ---------------------------------------------------------------- paramètres de l'outil
+
+@app.get("/parametres", response_class=HTMLResponse)
+def parametres_page(request: Request):
+    u = utilisateur(request)
+    cx = connexions.resume(connexions.lire(base, u["id"]))
+    return page(request, "parametres.html", u=u, cx=cx, ia=parametres.resume_ia(base), docs=parametres.resume_documents(base),
+                nb_utilisateurs=(base.un("SELECT COUNT(*) AS n FROM utilisateurs WHERE actif = 1") or {"n": 0})["n"])
+
+
+_cache_modeles = {"t": 0.0, "v": {}}
+
+
+def modeles_connus() -> dict:
+    """Modèles connus du moteur par fournisseur (liste de suggestions), gardés 10 minutes."""
+    import time as _time
+    if _time.time() - _cache_modeles["t"] > 600 or not _cache_modeles["v"]:
+        v = moteur.modeles_disponibles()
+        if v:
+            _cache_modeles.update(t=_time.time(), v=v)
+    return _cache_modeles["v"]
+
+
+@app.get("/parametres/modeles", response_class=HTMLResponse)
+def parametres_modeles_page(request: Request):
+    u = utilisateur(request)
+    connus = modeles_connus()
+    suggestions = [f"{f}/{m}" for f in (*parametres.FOURNISSEURS, "opencode") for m in connus.get(f, [])][:4000]
+    ia = parametres.resume_ia(base, u["id"])
+    miennes = parametres.resume_cles_personnelles(base, u["id"])
+    # État des clés par fournisseur, pour n'afficher que celles des modèles choisis (page dynamique).
+    cles = {f: {"libelle": info["libelle"], "lien": info["lien"], "gratuit": info["gratuit"],
+                "entreprise": ia["cles"][f]["fin"] if ia["cles"][f]["enregistree"] else "",
+                "serveur": ia["cles"][f]["serveur"], "perso": miennes[f]["fin"] if miennes[f]["enregistree"] else ""}
+            for f, info in parametres.FOURNISSEURS.items()}
+    choisis = [ia["principal"] or reglages.modele, *ia["usages"].values(), *ia["secours"]]
+    return page(request, "parametres_modeles.html", u=u, ia=ia, cles=cles, usages=parametres.USAGES, suggestions=suggestions,
+                modifiable=u["role"] == "admin", catalogue=parametres.catalogue_affiche(connus),
+                dans_catalogue={m for _, g in parametres.CATALOGUE for m, _, _ in g}, AUTRE=parametres.AUTRE,
+                SECOURS_MAX=parametres.SECOURS_MAX,
+                necessaires=sorted({m.split("/", 1)[0] for m in choisis if m} & set(parametres.FOURNISSEURS)),
+                partage=any(parametres.est_gratuit_partage(m) for m in choisis),
+                simulation=reglages.modele.startswith("simulation/"))
+
+
+AVERTISSEMENTS_ESSAI = ("Aucune clé", "Limite d'utilisation", "Crédit épuisé")
+
+
+def essayer(modeles, uid) -> tuple:
+    """Essaie chaque modèle : (échecs bloquants, avertissements). Une clé absente (chaque utilisateur peut mettre la
+    sienne), une limite atteinte ou un crédit épuisé n'empêchent pas d'enregistrer : la chaîne de secours prend le relais."""
+    echecs, avertis = [], []
+    for m in modeles:
+        if m.startswith("simulation/"):
+            continue
+        reussi, pourquoi = moteur.essayer_modele(m, uid)
+        if not reussi:
+            (avertis if any(a in pourquoi for a in AVERTISSEMENTS_ESSAI) else echecs).append(f"{m} : {pourquoi}")
+    return echecs, avertis
+
+
+@app.post("/parametres/modeles")
+async def parametres_modeles(request: Request):
+    form = await request.form()
+    controler_csrf(request, str(form.get("csrf") or ""))
+    u = exiger_admin(request)
+    principal = parametres.choisir(form, "principal")
+    usages = {k: parametres.choisir(form, f"usage_{k}") for k in parametres.USAGES}
+    secours = [parametres.choisir(form, f"secours_{i}") for i in range(1, parametres.SECOURS_MAX + 1)]
+    cles = {f: str(form.get(f"cle_{f}") or "") for f in parametres.FOURNISSEURS}
+    retirer = [f for f in parametres.FOURNISSEURS if form.get(f"retirer_{f}")]
+    try:
+        avant = parametres.enregistrer_ia(base, principal, usages, cles, retirer, u, secours=secours,
+                                          gratuits=bool(form.get("gratuits")))
+    except parametres.ErreurParametres as e:
+        flash(request, f"Paramètres non enregistrés : {e}", "erreur")
+        return RedirectResponse("/parametres/modeles", status_code=303)
+    ok, detail = moteur.disponible()
+    if not ok:
+        base.auditer(u["id"], None, "modeles-ia", "enregistrés sans essai (moteur indisponible)")
+        flash(request, f"Paramètres enregistrés, mais pas essayés : le moteur est indisponible ({detail}).", "alerte")
+        return RedirectResponse("/parametres/modeles", status_code=303)
+    echecs, avertis = essayer(parametres.modeles_a_essayer(base), u["id"])
+    if echecs:
+        parametres.restaurer(base, avant)
+        flash(request, "Paramètres non enregistrés : l'essai a échoué.\n" + "\n".join(echecs[:4]), "erreur")
+        return RedirectResponse("/parametres/modeles", status_code=303)
+    base.auditer(u["id"], None, "modeles-ia", ", ".join(parametres.modeles_a_essayer(base)))
+    if avertis:
+        flash(request, "Modèles d'IA enregistrés. À noter :\n" + "\n".join(avertis[:6]), "alerte")
+    else:
+        flash(request, "Modèles d'IA enregistrés : chaque modèle a répondu à un court essai.", "ok")
+    return RedirectResponse("/parametres/modeles", status_code=303)
+
+
+def modele_d_essai(fournisseur: str) -> str:
+    """Modèle avec lequel une clé personnelle est essayée : le premier du catalogue pour ce fournisseur."""
+    for _, groupe in parametres.CATALOGUE:
+        for m, _, _ in groupe:
+            if m.split("/", 1)[0] == fournisseur and not parametres.est_gratuit_partage(m):
+                return m
+    return ""
+
+
+@app.post("/parametres/modeles/mes-cles")
+async def parametres_mes_cles(request: Request):
+    """Clés personnelles : chaque utilisateur peut apporter sa clé (gratuite ou non), utilisée pour ses tâches."""
+    form = await request.form()
+    controler_csrf(request, str(form.get("csrf") or ""))
+    u = utilisateur(request)
+    cles = {f: str(form.get(f"ma_cle_{f}") or "") for f in parametres.FOURNISSEURS}
+    retirer = [f for f in parametres.FOURNISSEURS if form.get(f"retirer_ma_{f}")]
+    try:
+        avant = parametres.enregistrer_cles_personnelles(base, u, cles, retirer)
+    except parametres.ErreurParametres as e:
+        flash(request, f"Clés non enregistrées : {e}", "erreur")
+        return RedirectResponse("/parametres/modeles#mes-cles", status_code=303)
+    nouvelles = [f for f, c in cles.items() if c.strip()]
+    echecs, avertis = [], []
+    if nouvelles and moteur.disponible()[0]:
+        echecs, avertis = essayer([m for m in (modele_d_essai(f) for f in nouvelles) if m], u["id"])
+    if echecs:
+        parametres.restaurer(base, avant)
+        flash(request, "Clés non enregistrées : l'essai a échoué.\n" + "\n".join(echecs[:4]), "erreur")
+        return RedirectResponse("/parametres/modeles#mes-cles", status_code=303)
+    base.auditer(u["id"], None, "cles-ia-personnelles", ", ".join(nouvelles + [f"retrait {f}" for f in retirer]) or "aucun changement")
+    texte = "Vos clés sont enregistrées" + (" et ont répondu à un court essai." if nouvelles and not avertis else ".")
+    flash(request, texte + ("\nÀ noter :\n" + "\n".join(avertis) if avertis else ""), "alerte" if avertis else "ok")
+    return RedirectResponse("/parametres/modeles#mes-cles", status_code=303)
+
+
+@app.get("/parametres/documents", response_class=HTMLResponse)
+def parametres_documents_page(request: Request):
+    u = utilisateur(request)
+    return page(request, "parametres_documents.html", u=u, docs=parametres.resume_documents(base),
+                modifiable=u["role"] in ("admin", "responsable"),
+                marqueurs_cahier=__import__("cahier_modele").MARQUEURS, marqueurs_manuel=__import__("manuel_modele").MARQUEURS)
+
+
+@app.post("/parametres/documents/{type_}")
+async def parametres_documents_deposer(request: Request, type_: str, fichier: UploadFile = File(...), csrf: str = Form("")):
+    controler_csrf(request, csrf)
+    u = exiger_role(request, "admin", "responsable")
+    if type_ not in parametres.DOCUMENTS:
+        raise HTTPException(404, "Type de document inconnu.")
+    donnees = await fichier.read(30 * 1024 * 1024 + 1)
+    try:
+        meta = parametres.deposer_modele(base, type_, fichier.filename or "", donnees, u)
+    except parametres.ErreurParametres as e:
+        flash(request, f"Modèle refusé : {e}", "erreur")
+        return RedirectResponse(f"/parametres/documents#{type_}", status_code=303)
+    base.auditer(u["id"], None, f"modele-{type_}", meta["nom"])
+    flash(request, f"Modèle de {parametres.DOCUMENTS[type_]['libelle'].lower()} enregistré : il sera utilisé pour les prochains documents.", "ok")
+    return RedirectResponse(f"/parametres/documents#{type_}", status_code=303)
+
+
+@app.post("/parametres/documents/{type_}/retirer")
+def parametres_documents_retirer(request: Request, type_: str, csrf: str = Form("")):
+    controler_csrf(request, csrf)
+    u = exiger_role(request, "admin", "responsable")
+    if type_ not in parametres.DOCUMENTS:
+        raise HTTPException(404, "Type de document inconnu.")
+    parametres.retirer_modele(base, type_)
+    base.auditer(u["id"], None, f"modele-{type_}-retire")
+    flash(request, f"Modèle retiré : le {parametres.DOCUMENTS[type_]['libelle'].lower()} utilisera de nouveau le modèle interne.", "ok")
+    return RedirectResponse(f"/parametres/documents#{type_}", status_code=303)
+
+
+@app.get("/parametres/documents/{type_}/fichier")
+def parametres_documents_fichier(request: Request, type_: str, interne: int = 0):
+    """Télécharge le modèle de l'entreprise, ou le modèle interne (point de départ pour en faire un)."""
+    utilisateur(request)
+    info = parametres.DOCUMENTS.get(type_)
+    if not info:
+        raise HTTPException(404, "Type de document inconnu.")
+    if interne:
+        f = reglages.racine / "templates" / ("cahier/modele_cahier.xlsx" if type_ == "cahier" else "manuel/modele_manuel.docx")
+        return FileResponse(f, filename=f.name)
+    f = parametres.chemin_modele(type_)
+    if not f:
+        raise HTTPException(404, "Aucun modèle de l'entreprise déposé.")
+    meta = parametres.lire(base, f"modele:{type_}") or {}
+    return FileResponse(f, filename=meta.get("nom") or info["fichier"])
+
+
+# ---------------------------------------------------------------- activité
+
+@app.get("/activite", response_class=HTMLResponse)
+def activite_page(request: Request, projet: str = ""):
+    u = utilisateur(request)
+    codes = {p["code"]: p["nom"] for p in liste_projets()}
+    sql, params = "SELECT t.*, u.nom AS auteur FROM taches t LEFT JOIN utilisateurs u ON u.id = t.cree_par", []
+    if projet and projet in codes:
+        sql += " WHERE t.projet = ?"
+        params.append(projet)
+    lignes = []
+    for t in base.tous(sql + " ORDER BY t.id DESC LIMIT 100", tuple(params)):
+        if t["projet"] not in codes:
+            continue
+        try:
+            journal = json.loads(t["journal"] or "[]")
+        except ValueError:
+            journal = []
+        lignes.append({"id": t["id"], "projet": t["projet"], "nom_projet": codes[t["projet"]],
+                       "type": TYPES_TACHES.get(t["type"], t["type"]), "statut": t["statut"],
+                       "statut_libelle": STATUTS_TACHES.get(t["statut"], t["statut"]), "auteur": t["auteur"] or "",
+                       "debut": (t["debut"] or t["cree_le"] or "")[:16].replace("T", " à "),
+                       "dernier": (journal[-1]["m"] if journal else "")[:220]})
+    return page(request, "activite.html", u=u, lignes=lignes, projets_=codes, filtre=projet)
+
+
+# ---------------------------------------------------------------- relais vers le fournisseur d'IA (moteur uniquement)
+
+@app.api_route("/ia/{fournisseur}/{chemin:path}", methods=["GET", "POST"], include_in_schema=False)
+async def relais_fournisseur(request: Request, fournisseur: str, chemin: str):
+    """Appelé par le moteur OpenCode avec le jeton interne, jamais par le navigateur (pas de session)."""
+    from starlette.concurrency import run_in_threadpool
+    uid = await run_in_threadpool(moteur.utilisateur_de_session, base, request.headers.get("x-opencode-session-id", ""))
+    return await relais_ia.relayer(request, fournisseur, chemin, parametres.cle_pour(base, fournisseur, uid))

@@ -7,7 +7,7 @@ un nombre limité de tâches en parallèle sur le serveur (QAF_TACHES_PARALLELES
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-from . import campagnes, connexions, projets
+from . import campagnes, connexions, parametres, projets
 from .config import reglages
 from .db import STATUTS_ACTIFS, maintenant
 from .moteur import ErreurMoteur, moteur
@@ -19,6 +19,9 @@ TYPES = {
     "publier": "Publication dans Squash",
     "specs": "Specs d'automatisation",
     "tester": "Tests de l'application",
+    "automatiser": "Scripts Playwright",
+    "executer-scripts": "Exécution des scripts",
+    "manuel": "Rédaction du manuel utilisateur",
 }
 STATUTS = {
     "en_attente": "En attente", "en_cours": "En cours", "attente_confirmation": "Confirmation demandée",
@@ -130,7 +133,9 @@ class Gestionnaire:
         self.base.maj_tache(tid, statut="en_cours", debut=maintenant())
         try:
             fonction = {"analyser": self._ia, "corriger": self._ia, "publier-simulation": self._publier,
-                        "publier": self._publier, "specs": self._specs, "tester": self._tester}[t["type"]]
+                        "publier": self._publier, "specs": self._specs, "tester": self._tester,
+                        "automatiser": self._automatiser, "executer-scripts": self._executer_scripts,
+                        "manuel": self._manuel}[t["type"]]
             fonction(t)
             t = self.base.tache(tid)
             self.base.maj_tache(tid, statut="annule" if t["annulation"] else "termine", fin=maintenant(), attente=None)
@@ -158,7 +163,8 @@ class Gestionnaire:
                 raise ErreurTache("L'Excel et le Word ont été modifiés différemment : choisir lequel garder "
                                   "(page du projet) avant d'envoyer une demande.")
             commande, arguments = "corriger", f"{code} {demande}"
-        bilan = moteur.executer(self.base, t["id"], commande, arguments)
+        bilan = moteur.executer(self.base, t["id"], commande, arguments, modele=parametres.modele_pour(self.base, t["type"]),
+                                secours=parametres.secours_pour(self.base, t["type"], t["cree_par"]))
         if t["type"] == "analyser" and not self.base.tache(t["id"])["annulation"] \
                 and not (projets.dossier(code) / "02-a-valider" / "cas-de-tests.json").exists():
             raise ErreurTache(analyse_sans_resultat(bilan))
@@ -190,7 +196,7 @@ class Gestionnaire:
         # la même instance que la vérification préalable.
         cx = connexions.lire(self.base, t["cree_par"])
         if not cx:
-            raise ErreurTache("Aucune connexion à Squash : réglez-la dans la page Squash, puis recommencez.")
+            raise ErreurTache("Aucune connexion à Squash : réglez-la dans Paramètres > Connexion Squash, puis recommencez.")
         instance = t["parametres"].get("instance")
         if instance and instance != cx["url"]:
             raise ErreurTache("La connexion Squash a changé depuis la vérification : recommencez l'envoi.")
@@ -276,20 +282,22 @@ class Gestionnaire:
             campagnes.verifier_reseau(adresse)
         libelles, valeurs = campagnes.secrets(self.base, code)
         nom = campagnes.nom_navigateur(tid)
+        modele = parametres.modele_pour(self.base, "tester")
         try:
-            c = outil.preparer(code, app["url"], libelles, app["actions"], modele=reglages.modele,
+            c = outil.preparer(code, app["url"], libelles, app["actions"], modele=modele,
                                par=t.get("auteur") or "", navigateur=nom)
         except outil.ErreurExecution as e:
             raise ErreurTache(str(e))
         self.base.maj_tache(tid, parametres={**(t["parametres"] or {}), "campagne": c.name})
         self.base.ajouter_journal(tid, f"Campagne {c.name} : {len(json.loads((c / 'campagne.json').read_text(encoding='utf-8'))['cas'])} cas "
                                        f"sur {app['url']}, {len(libelles)} compte(s) de test, {campagnes.ACTIONS[app['actions']].lower()}.")
-        simulation = reglages.modele.startswith("simulation/")
+        simulation = modele.startswith("simulation/")
         try:
             if not simulation:  # le faux modèle de démonstration n'utilise pas de navigateur
                 moteur.ajouter_navigateur(nom, campagnes.configuration_navigateur(tid, app, valeurs, c))
                 self.base.ajouter_journal(tid, "Navigateur de test démarré (limité aux domaines de l'application).")
-            bilan = moteur.executer(self.base, tid, "tester", f"{code} campagne {c.name}", outils=campagnes.outils_autorises(tid))
+            bilan = moteur.executer(self.base, tid, "tester", f"{code} campagne {c.name}", outils=campagnes.outils_autorises(tid),
+                                    modele=modele, secours=parametres.secours_pour(self.base, "tester", t["cree_par"]))
         finally:
             if not simulation:
                 moteur.retirer_navigateur(nom)
@@ -308,6 +316,154 @@ class Gestionnaire:
         self.base.ajouter_journal(tid, f"Résultats : {s['reussi']} réussi(s), {s['echoue']} échoué(s), {s['bloque']} bloqué(s), "
                                        f"{s['non_execute']} non exécuté(s) ; {synthese['modifications']} correction(s) de cas proposée(s). "
                                        f"Coût : {bilan.get('cout_usd', 0)} USD.")
+
+    def _automatiser(self, t):
+        """Écriture des scripts Playwright des scénarios choisis, en observant l'application dans le navigateur de la tâche."""
+        import automatisation as outil
+        code, tid = t["projet"], t["id"]
+        p = t["parametres"] or {}
+        d = projets.dossier(code)
+        if not (d / "03-valide" / "cas-de-tests.json").exists():
+            raise ErreurTache("Les cas doivent être validés avant d'être automatisés.")
+        if (d / "02-a-valider" / "cas-de-tests.json").exists():
+            raise ErreurTache("Des cas sont en relecture : terminez la relecture avant d'automatiser.")
+        app = campagnes.application(code)
+        if not app["url"]:
+            raise ErreurTache("Indiquez d'abord le lien de l'application (page Application testée).")
+        for adresse in [app["url"], *app["autres_domaines"]]:
+            campagnes.verifier_reseau(adresse)
+        # Specs à jour avec la version validée (les specs CONFIRMÉES ne sont pas écrasées).
+        r = projets.script("generer_specs.py", code)
+        if r.returncode:
+            raise ErreurTache("Les specs d'automatisation n'ont pas pu être générées : " + (r.stderr or r.stdout)[-300:])
+        libelles, valeurs = campagnes.secrets(self.base, code)
+        nom = campagnes.nom_navigateur(tid)
+        modele = parametres.modele_pour(self.base, "automatiser")
+        try:
+            g = outil.preparer(code, p.get("cas") or [], p.get("langage") or "js", app["url"], libelles, app["actions"],
+                               modele=modele, par=t.get("auteur") or "", navigateur=nom)
+        except outil.ErreurAutomatisation as e:
+            raise ErreurTache(str(e))
+        gen = json.loads((g / "generation.json").read_text(encoding="utf-8"))
+        self.base.maj_tache(tid, parametres={**p, "generation": g.name})
+        self.base.ajouter_journal(tid, f"Génération {g.name} : {len(gen['cas'])} scénario(s) en {gen['langage_libelle']}, "
+                                       f"sur {app['url']}, {len(libelles)} compte(s) de test.")
+        simulation = modele.startswith("simulation/")
+        try:
+            if not simulation:  # le faux modèle de démonstration n'utilise pas de navigateur
+                moteur.ajouter_navigateur(nom, campagnes.configuration_navigateur(tid, app, valeurs, g))
+                self.base.ajouter_journal(tid, "Navigateur démarré pour relever les libellés et les locators réels.")
+            bilan = moteur.executer(self.base, tid, "automatiser", f"{code} generation {g.name}", outils=campagnes.outils_autorises(tid),
+                                    modele=modele, secours=parametres.secours_pour(self.base, "automatiser", t["cree_par"]))
+        finally:
+            if not simulation:
+                moteur.retirer_navigateur(nom)
+        try:
+            synthese = outil.consolider(code, g.name, secrets=valeurs.values())
+        except outil.ErreurAutomatisation as e:
+            raise ErreurTache(str(e))
+        s = synthese["statistiques"]
+        for a in synthese["avertissements"][:10]:
+            self.base.ajouter_journal(tid, "Attention : " + a)
+        r = self.base.tache(tid)["resultat"] or {}
+        r.update(generation=g.name, statistiques=s)
+        self.base.maj_tache(tid, resultat=r)
+        if not s["generes"] and not self.base.tache(tid)["annulation"]:
+            dit = " ".join((bilan.get("compte_rendu") or "").split())[:400]
+            raise ErreurTache("Aucun script n'a été écrit." + (f" Dernier message de l'assistant : « {dit} »" if dit else "")
+                              + " Vérifiez le lien et les comptes de test, puis relancez ; un modèle plus puissant est recommandé.")
+        self.base.ajouter_journal(tid, f"Scripts : {s['generes']} écrit(s), {s['non_generes']} non généré(s), "
+                                       f"{s['locators_verifies']} avec tous les locators vérifiés. Coût : {bilan.get('cout_usd', 0)} USD.")
+
+    def _executer_scripts(self, t):
+        """Exécution des scripts Playwright du dépôt, sans IA, avec les comptes de test du projet."""
+        import execution_scripts as outil
+        code, tid = t["projet"], t["id"]
+        p = t["parametres"] or {}
+        app = campagnes.application(code)
+        if not app["url"]:
+            raise ErreurTache("Indiquez d'abord le lien de l'application (page Application testée).")
+        for adresse in [app["url"], *app["autres_domaines"]]:
+            campagnes.verifier_reseau(adresse)
+        _, valeurs = campagnes.secrets(self.base, code)
+        try:
+            e = outil.preparer(code, p.get("cas") or [], app["url"], par=t.get("auteur") or "")
+        except outil.ErreurExecutionScripts as ex:
+            raise ErreurTache(str(ex))
+        n = len(json.loads((e / "execution.json").read_text(encoding="utf-8"))["cas"])
+        self.base.maj_tache(tid, parametres={**p, "execution": e.name})
+        self.base.ajouter_journal(tid, f"Exécution {e.name} : {n} script(s) sur {app['url']}, navigateur limité aux domaines "
+                                       "de l'application.")
+        try:
+            s = outil.executer(code, e.name, app["url"], app["autres_domaines"], valeurs,
+                               arret=lambda: bool(self.base.tache(tid)["annulation"]),
+                               duree_max_s=max(60, reglages.duree_max_tache_min * 60))
+        except outil.ErreurExecutionScripts as ex:
+            raise ErreurTache(str(ex))
+        for a in s["avertissements"]:
+            self.base.ajouter_journal(tid, "Attention : " + a)
+        st = s["statistiques"]
+        r = self.base.tache(tid)["resultat"] or {}
+        r.update(execution=e.name, statistiques=st)
+        self.base.maj_tache(tid, resultat=r)
+        if s["erreurs"] and not st["reussi"] + st["echoue"] + st["instable"] and not self.base.tache(tid)["annulation"]:
+            raise ErreurTache("Les scripts n'ont pas pu être lancés : " + " ".join(s["erreurs"][0].split())[:500])
+        self.base.ajouter_journal(tid, f"Résultats : {st['reussi']} réussi(s), {st['echoue']} échoué(s), {st['instable']} instable(s), "
+                                       f"{st['ignore']} ignoré(s), {st['non_execute']} non exécuté(s).")
+
+    def _manuel(self, t):
+        """Rédaction du manuel utilisateur : l'agent parcourt l'application et écrit le contenu (JSON) et les captures ;
+        l'application contrôle ce contenu et le met en page dans le modèle Word (de l'entreprise, sinon interne)."""
+        import manuel as outil
+        code, tid = t["projet"], t["id"]
+        p = t["parametres"] or {}
+        d = projets.dossier(code)
+        if not (d / "03-valide" / "cas-de-tests.json").exists():
+            raise ErreurTache("Les cas doivent être validés avant la rédaction du manuel.")
+        app = campagnes.application(code)
+        if not app["url"]:
+            raise ErreurTache("Indiquez d'abord le lien de l'application (page Application testée).")
+        for adresse in [app["url"], *app["autres_domaines"]]:
+            campagnes.verifier_reseau(adresse)
+        libelles, valeurs = campagnes.secrets(self.base, code)
+        nom = campagnes.nom_navigateur(tid)
+        modele = parametres.modele_pour(self.base, "manuel")
+        try:
+            g = outil.preparer(code, app["url"], libelles, app["actions"], par=t.get("auteur") or "", navigateur=nom,
+                               fonctions=p.get("fonctionnalites") or None)
+        except outil.ErreurManuel as e:
+            raise ErreurTache(str(e))
+        fiche_r = json.loads((g / "redaction.json").read_text(encoding="utf-8"))
+        self.base.maj_tache(tid, parametres={**p, "redaction": g.name})
+        modele_doc = parametres.chemin_modele("manuel")
+        self.base.ajouter_journal(tid, f"Rédaction {g.name} : {len(fiche_r['fonctionnalites'])} fonctionnalité(s) sur {app['url']}, "
+                                       f"{len(libelles)} compte(s) de test, modèle Word "
+                                       + ("de l'entreprise." if modele_doc else "interne."))
+        simulation = modele.startswith("simulation/")
+        try:
+            if not simulation:
+                moteur.ajouter_navigateur(nom, campagnes.configuration_navigateur(tid, app, valeurs, g))
+                self.base.ajouter_journal(tid, "Navigateur démarré pour parcourir l'application et prendre les captures.")
+            bilan = moteur.executer(self.base, tid, "rediger-manuel", f"{code} redaction {g.name}",
+                                    outils=campagnes.outils_autorises(tid), modele=modele,
+                                    secours=parametres.secours_pour(self.base, "manuel", t["cree_par"]))
+        finally:
+            if not simulation:
+                moteur.retirer_navigateur(nom)
+        if self.base.tache(tid)["annulation"] and not (g / "contenu.json").exists():
+            return
+        try:
+            s = outil.construire(code, g.name, modele_doc, secrets=valeurs.values())
+        except outil.ErreurManuel as e:
+            dit = " ".join((bilan.get("compte_rendu") or "").split())[:400]
+            raise ErreurTache(str(e) + (f" Dernier message de l'assistant : « {dit} »" if dit else ""))
+        for a in s["avertissements"][:10]:
+            self.base.ajouter_journal(tid, "Attention : " + a)
+        r = self.base.tache(tid)["resultat"] or {}
+        r.update(redaction=g.name, fichier=s["chemin"])
+        self.base.maj_tache(tid, resultat=r)
+        self.base.ajouter_journal(tid, f"Manuel : {s['chapitres']} chapitre(s), {s['procedures']} procédure(s), {s['figures']} capture(s), "
+                                       f"{len(s['points_a_confirmer'])} point(s) à confirmer. Coût : {bilan.get('cout_usd', 0)} USD.")
 
     def _specs(self, t):
         code = t["projet"]
@@ -351,7 +507,7 @@ def progression(t) -> dict:
     statut = t["statut"]
     if statut == "termine":
         return {"pourcentage": 100, "message": "Génération terminée" if t["type"] in ("analyser", "corriger")
-                else ("Envoyé dans Squash" if t["type"] == "publier" else ("Tests terminés" if t["type"] == "tester" else "Terminé"))}
+                else ("Envoyé dans Squash" if t["type"] == "publier" else ("Tests terminés" if t["type"] == "tester" else ("Scripts écrits" if t["type"] == "automatiser" else ("Scripts exécutés" if t["type"] == "executer-scripts" else ("Manuel rédigé" if t["type"] == "manuel" else "Terminé")))))}
     if statut in ("echec", "annule", "interrompue"):
         dernier = (t["journal"] or [{}])[-1].get("m", "")
         return {"pourcentage": 0, "message": dernier.replace("Échec : ", "")}
@@ -393,6 +549,47 @@ def progression(t) -> dict:
         minutes = int(ecoule // 60)
         return {"pourcentage": round(min(97, 3 + 94 * fait / total), 1),
                 "message": f"Cas exécutés : {fait} sur {total}" + (f" · {minutes} min" if minutes else "")}
+    if t["type"] == "automatiser":
+        fait, total = 0, 0
+        try:
+            g = projets.dossier(t["projet"]) / "04-livrables" / "automatisation" / str((t["parametres"] or {}).get("generation") or "_")
+            total = len(_json.loads((g / "generation.json").read_text(encoding="utf-8"))["cas"])
+            fait = len(list((g / "resultats").glob("*.json")))
+        except Exception:  # noqa: BLE001
+            pass
+        if not total:
+            return {"pourcentage": 3, "message": "Préparation du dépôt et du navigateur"}
+        minutes = int(ecoule // 60)
+        return {"pourcentage": round(min(97, 3 + 94 * fait / total), 1),
+                "message": f"Scripts écrits : {fait} sur {total}" + (f" · {minutes} min" if minutes else "")}
+    if t["type"] == "executer-scripts":
+        import execution_scripts as outil
+        fait, total = 0, 0
+        try:
+            fait, total = outil.progression(projets.dossier(t["projet"]) / "04-livrables" / "automatisation" / "executions"
+                                            / str((t["parametres"] or {}).get("execution") or "_"))
+        except Exception:  # noqa: BLE001
+            pass
+        if not total:
+            return {"pourcentage": 3, "message": "Contrôle des scripts"}
+        minutes = int(ecoule // 60)
+        return {"pourcentage": round(min(97, 3 + 94 * fait / total), 1),
+                "message": f"Tests exécutés : {fait} sur {total}" + (f" · {minutes} min" if minutes else "")}
+    if t["type"] == "manuel":
+        captures, ecrit = 0, False
+        try:
+            g = projets.dossier(t["projet"]) / "04-livrables" / "manuel" / "redactions" / str((t["parametres"] or {}).get("redaction") or "_")
+            captures = len(list((g / "captures").glob("*.png")))
+            ecrit = (g / "contenu.json").exists()
+        except Exception:  # noqa: BLE001
+            pass
+        minutes = int(ecoule // 60)
+        if ecrit:
+            return {"pourcentage": 92, "message": "Mise en page du manuel"}
+        p = 3 + 80 * (1 - math.exp(-ecoule / 600))
+        return {"pourcentage": round(min(p, 85), 1),
+                "message": (f"Parcours de l'application : {captures} capture{'s' if captures > 1 else ''}" if captures
+                            else "Parcours de l'application") + (f" · {minutes} min" if minutes else "")}
     if t["type"] == "publier":
         total = int((t["parametres"] or {}).get("a_creer") or 0)
         fait = 0

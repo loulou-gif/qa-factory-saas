@@ -9,6 +9,7 @@
   l'application testée.
 - Le lien de l'application passe la même garde réseau que Squash.
 """
+import os
 import re
 from urllib.parse import urlsplit
 
@@ -133,6 +134,10 @@ def configuration_navigateur(tid: int, app: dict, valeurs: dict, dossier_campagn
     origines = ";".join([origine(app["url"]), *app["autres_domaines"]])
     env = {"QAF_NAV_SECRETS": __import__("json").dumps(valeurs), "QAF_NAV_ORIGINES": origines,
            "QAF_NAV_VERSION": VERSION_MCP}
+    # MCP installé à l'avance (image, démo) : transmis explicitement, sans compter sur l'environnement d'OpenCode.
+    for k in ("PLAYWRIGHT_MCP_CLI", "PLAYWRIGHT_BROWSERS_PATH"):
+        if os.environ.get(k):
+            env[k] = os.environ[k]
     return {"type": "local", "command": ["node", str(reglages.racine / "saas" / "navigateur_mcp.mjs")],
             "cwd": str(dossier_campagne), "environment": env, "timeout": 60000}
 

@@ -14,6 +14,11 @@ services:
     image: qa-factory-saas:local
     command: ["saas/demarrer.sh", "moteur"]
     env_file: .env
+    environment:
+      # Fournisseurs d'IA appelés à travers l'application web, qui garde les clés (app/relais_ia.py).
+      QAF_RELAIS_IA: http://web:8000/ia
+      NO_PROXY: web,localhost,127.0.0.1
+      no_proxy: web,localhost,127.0.0.1
     volumes:
       - projets:/srv/qa-factory/projets
       - opencode-donnees:/home/qaf/.local/share/opencode

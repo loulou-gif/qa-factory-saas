@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS comptes_test (
   maj_le TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS comptes_test_projet ON comptes_test(projet, id);
+CREATE TABLE IF NOT EXISTS reglages_app (
+  cle TEXT PRIMARY KEY,
+  valeur TEXT NOT NULL,
+  maj_par INTEGER REFERENCES utilisateurs(id),
+  maj_le TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY,
   quand TEXT NOT NULL,

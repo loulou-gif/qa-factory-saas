@@ -66,6 +66,8 @@ Pourquoi deux temps : avant que l'application existe, les libellés, enchaîneme
 | Specs d'automatisation | skill `specs-automatisation` |
 | Exploration de l'application (temps B) | skill `exploration-application` |
 | Génération des tests Playwright (temps B) | skill `generation-tests-playwright` |
+| Exécution des cas par l'application web (temps B) | skill `execution-tests` |
+| Scripts Playwright écrits par l'application web (temps B) | skill `automatisation-playwright` |
 | Manuel utilisateur (temps B) | skill `manuel-utilisateur` |
 | Modèles (Excel, Word, specs, AGENTS.md) | `templates/` |
 | Configuration d'un projet | `projets/<projet>/projet.json` |

@@ -13,6 +13,8 @@ case "$1" in
     unset SQUASH_TM_API_TOKEN SQUASH_TM_USERNAME SQUASH_TM_PASSWORD SQUASH_TM_BASE_URL SQUASH_MCP_INDEX
     # Ni les secrets de l'application (sessions, comptes, chiffrement des connexions Squash).
     unset QAF_SECRET QAF_CLE_SECRETS QAF_ADMIN_MOT_DE_PASSE
+    # Ni les clés des fournisseurs d'IA : le moteur passe par le relais de l'application (app/relais_ia.py).
+    unset OPENROUTER_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY
     if [ "${QAF_MODELE#simulation/}" != "$QAF_MODELE" ]; then
       export QAF_FAUX_MODELE_URL="${QAF_FAUX_MODELE_URL:-http://127.0.0.1:4010/v1}"
       python3 saas/dev/faux_modele.py 4010 &

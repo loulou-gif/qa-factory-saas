@@ -6,17 +6,18 @@
 <div class="etroit">
   <div class="titre-projet"><h1>{{ fiche.nom }}</h1><span class="pastille {{ p.statut[0] }}">{{ p.statut[1] }}</span></div>
 
-  {% if active and active.type in ('analyser', 'corriger', 'tester') %}
-    {% set teste = active.type == 'tester' %}
-    <p class="sous-titre">{{ "L'assistant exécute les cas sur " ~ app_.url ~ "." if teste else "L'assistant prépare vos fichiers." }}</p>
+  {% if active and active.type in ('analyser', 'corriger', 'tester', 'automatiser', 'executer-scripts', 'manuel') %}
+    {% set teste = active.type == 'tester' %}{% set auto = active.type == 'automatiser' %}{% set lance = active.type == 'executer-scripts' %}{% set manuel = active.type == 'manuel' %}
+    <p class="sous-titre">{{ "L'assistant exécute les cas sur " ~ app_.url ~ "." if teste else ("L'assistant écrit les scripts Playwright en observant " ~ app_.url ~ "." if auto
+      else ("Playwright exécute les scripts automatisés sur " ~ app_.url ~ "." if lance else ("L'assistant rédige le manuel utilisateur en parcourant " ~ app_.url ~ "." if manuel else "L'assistant prépare vos fichiers."))) }}</p>
     <div class="depot travail" id="depot" data-tache="{{ active.id }}" data-projet="{{ code }}" data-type="{{ active.type }}">
       <div class="remplissage" aria-hidden="true"></div>
       <div class="pourcentage" aria-hidden="true">0 %</div>
       <svg class="coche" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="34"/><path d="M22 37l10 10 19-21"/></svg>
-      <div class="phrase" aria-live="polite">{{ 'Tests en cours' if teste else 'Génération en cours' }}</div>
-      <div class="aide">Vous pouvez quitter cette page : {{ 'les tests continuent' if teste else 'la génération continue' }}.</div>
+      <div class="phrase" aria-live="polite">{{ 'Tests en cours' if teste else ('Écriture des scripts' if auto else ('Exécution des scripts' if lance else ('Rédaction du manuel' if manuel else 'Génération en cours'))) }}</div>
+      <div class="aide">Vous pouvez quitter cette page : {{ 'les tests continuent' if teste or lance else ('la rédaction continue' if manuel else 'la génération continue') }}.</div>
     </div>
-    {% if teste %}<p class="centre"><button class="lien-bouton" type="button" data-action="arreter-tache" data-tache="{{ active.id }}">Arrêter les tests</button></p>{% endif %}
+    {% if teste or auto or lance or manuel %}<p class="centre"><button class="lien-bouton" type="button" data-action="arreter-tache" data-tache="{{ active.id }}">{{ 'Arrêter les tests' if teste else ("Arrêter l'écriture des scripts" if auto else ("Arrêter l'exécution des scripts" if lance else 'Arrêter la rédaction')) }}</button></p>{% endif %}
 
   {% elif not a %}
     <p class="sous-titre">La génération n'a pas abouti.</p>
@@ -141,6 +142,34 @@
       </div>
       {% endif %}
     </section>
+    {% if app_.url %}
+    <section class="encadre automatiser" id="automatiser" aria-labelledby="titre-automatiser">
+      <h2 id="titre-automatiser">Automatiser</h2>
+      {% if automatisation.automatises %}
+      <p class="discret petit">{{ automatisation.automatises }} scénario{{ 's' if automatisation.automatises > 1 }} automatisé{{ 's' if automatisation.automatises > 1 }} en {{ 'TypeScript' if automatisation.langage == 'ts' else 'JavaScript' }}{% if automatisation.derniere %} · dernière génération le {{ automatisation.derniere.generation.debut[:16]|replace('T', ' à ') }}{% endif %}.</p>
+      {% set dx = automatisation.execution %}
+      {% if dx %}{% set sx = dx.statistiques %}
+      <p class="chiffres-execution">Dernière exécution le {{ dx.execution.debut[:16]|replace('T', ' à ') }} :
+        <span class="etat reussi">{{ sx.reussi }} réussi{{ 's' if sx.reussi > 1 }}</span>
+        {% if sx.echoue %}<span class="etat echoue">{{ sx.echoue }} échoué{{ 's' if sx.echoue > 1 }}</span>{% endif %}
+        {% if sx.instable %}<span class="etat bloque">{{ sx.instable }} instable{{ 's' if sx.instable > 1 }}</span>{% endif %}
+        {% if sx.non_execute + sx.ignore %}<span class="etat non-execute">{{ sx.non_execute + sx.ignore }} non exécuté{{ 's' if sx.non_execute + sx.ignore > 1 }}</span>{% endif %}</p>
+      {% endif %}
+      {% else %}
+      <p>L'assistant propose les scénarios à automatiser en priorité, puis écrit les scripts Playwright de ceux que vous cochez, en JavaScript ou en TypeScript.</p>
+      {% endif %}
+      <div class="action-principale"><a class="{{ 'lien-bouton' if automatisation.automatises else 'bouton' }}" href="/projets/{{ code }}/automatisation{{ '#execution' if automatisation.automatises }}">{{ "Exécuter ou automatiser d'autres scénarios" if automatisation.automatises else 'Choisir les scénarios à automatiser' }}</a></div>
+    </section>
+    {% endif %}
+    <section class="encadre documents-recette" id="documents" aria-labelledby="titre-documents">
+      <h2 id="titre-documents">Documents de recette</h2>
+      {% if documents.cahier or documents.manuel %}
+      <p class="discret petit">{% if documents.cahier %}Cahier de tests du {{ documents.cahier.date }}{% endif %}{% if documents.cahier and documents.manuel %} · {% endif %}{% if documents.manuel %}manuel utilisateur du {{ documents.manuel.fin[:16]|replace('T', ' à ') }}{% endif %}.</p>
+      {% else %}
+      <p>Le cahier de tests et le manuel utilisateur, produits dans les modèles de votre entreprise s'ils ont été déposés (Paramètres), sinon dans les modèles internes.</p>
+      {% endif %}
+      <div class="action-principale"><a class="{{ 'lien-bouton' if documents.cahier or documents.manuel else 'bouton' }}" href="/projets/{{ code }}/documents">{{ 'Voir les documents' if documents.cahier or documents.manuel else 'Produire les documents' }}</a></div>
+    </section>
     {% endif %}
 
     <p class="telechargements">Télécharger :
@@ -160,7 +189,10 @@
 {% block script %}<script>
 var d = document.getElementById('depot');
 if (d) QAF.suivreTache(d, d.getAttribute('data-tache'), function () {
-  if (d.getAttribute('data-type') === 'tester') location.href = '/projets/' + d.getAttribute('data-projet') + '/tests'; else location.reload();
+  var type = d.getAttribute('data-type'), projet = '/projets/' + d.getAttribute('data-projet');
+  if (type === 'tester') location.href = projet + '/tests'; else if (type === 'automatiser') location.href = projet + '/automatisation';
+  else if (type === 'executer-scripts') location.href = projet + '/automatisation#execution';
+  else if (type === 'manuel') location.href = projet + '/documents#manuel'; else location.reload();
 });
 var s = document.getElementById('squash'); if (s) QAF.squash(s);
 QAF.lancerTests(document.getElementById('tester'));

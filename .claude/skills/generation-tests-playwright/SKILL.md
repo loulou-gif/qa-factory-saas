@@ -11,9 +11,10 @@ Le code ne vit pas dans `qa-factory` mais dans le dépôt d'automatisation du pr
 
 Si `automatisation.depot` est vide ou n'existe pas, demander au responsable du projet où le créer (habituellement `C:\Users\HP\Desktop\SYNELIA\<PROJET>_AUTOMATION`), puis copier `templates/automatisation/` :
 
-- `agents/AGENTS.md` : remplacer les marqueurs `{{APPLICATION}}`, `{{URL}}`, `{{ESPACES}}` par les valeurs de `projet.json` ; ne rien ajouter d'inventé ;
+- `agents/AGENTS.md` : remplacer les marqueurs `{{APPLICATION}}`, `{{URL}}`, `{{ESPACES}}`, `{{ACTIONS_AUTORISEES}}` par les valeurs de `projet.json`, `{{LANGAGE}}` par `JavaScript` et `{{EXT}}` par `js` ; ne rien ajouter d'inventé ;
+- `.env.example` et `config/env.js` : un couple `COMPTE_<n>_IDENTIFIANT` / `COMPTE_<n>_MOT_DE_PASSE` par compte (`APP_USERNAME` / `APP_PASSWORD` restent acceptés pour le compte 1) ;
 - `agents/project-overview.md` : à remplir depuis le CDC (faits) et `ambiguites.md` (points à confirmer) ;
-- `package.json`, `playwright.config.js`, `config/env.js`, `.env.example`, `.gitignore`, `utils/evidence.js`, `utils/evidence-reporter.js`, `utils/unique.js` ;
+- `package.json`, `playwright.config.js`, `config/env.js`, `.env.example`, `.gitignore`, `utils/evidence.js`, `utils/evidence-reporter.js`, `utils/unique.js` (le dossier `ts/` du modèle sert à la variante TypeScript de l'application web, ne pas le copier ici) ;
 - copier les specs CONFIRMÉES dans `agents/features/`.
 
 Puis `npm install`, `npx playwright install chromium`, et reporter le chemin dans `projet.json`.

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block titre %}Activité · QA Factory{% endblock %}
+{% block contenu %}
+<div class="etroit">
+  <h1>Activité</h1>
+  <p class="sous-titre">Les tâches lancées sur les projets : analyses, tests, scripts, documents, envois dans Squash.</p>
+  {% if projets_ %}
+  <form method="get" action="/activite" class="filtre-activite">
+    <label for="projet">Projet</label>
+    <select id="projet" name="projet" onchange="this.form.submit()">
+      <option value="">Tous les projets</option>
+      {% for c, n in projets_.items() %}<option value="{{ c }}" {% if c == filtre %}selected{% endif %}>{{ n }}</option>{% endfor %}
+    </select>
+    <noscript><button class="bouton discret-btn" type="submit">Filtrer</button></noscript>
+  </form>
+  {% endif %}
+  {% if lignes %}
+  <ul class="liste-activite">
+    {% for t in lignes %}
+    {% set g = {'termine': 'ok', 'echec': 'erreur', 'interrompue': 'erreur', 'annule': 'neutre', 'en_cours': 'encours', 'en_attente': 'encours', 'attente_confirmation': 'alerte'}.get(t.statut, 'neutre') %}
+    <li>
+      <span class="quoi">{{ t.type }} · <a href="/projets/{{ t.projet }}">{{ t.nom_projet }}</a> <span class="pastille {{ g }}">{{ t.statut_libelle }}</span></span>
+      <span class="quand">n° {{ t.id }} · {{ t.debut }}{% if t.auteur %} · {{ t.auteur }}{% endif %}</span>
+      {% if t.dernier %}<span class="detail">{{ t.dernier }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p style="margin-top:1.5rem">Aucune tâche pour l'instant. <a href="/">Déposez un cahier des charges</a> pour commencer.</p>
+  {% endif %}
+</div>
+{% endblock %}

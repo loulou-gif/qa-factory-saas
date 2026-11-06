@@ -21,7 +21,7 @@ Résumé du cahier des charges (faits documentés, avec leurs sources `CDC §…
 
 | Rôle | Variable d'identifiant | Droits confirmés | Source |
 |---|---|---|---|
-| À compléter | `APP_USERNAME` / `APP_PASSWORD` | à confirmer | |
+| À compléter | `COMPTE_1_IDENTIFIANT` / `COMPTE_1_MOT_DE_PASSE` | à confirmer | |
 
 ## 4. Périmètre et actions autorisées
 

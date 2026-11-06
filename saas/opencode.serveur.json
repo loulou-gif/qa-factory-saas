@@ -3,9 +3,52 @@
   "model": "{env:QAF_MODELE}",
   "small_model": "{env:QAF_MODELE}",
   "provider": {
+    "google": {
+      "options": {
+        "baseURL": "relais/google",
+        "apiKey": "jeton-du-relais"
+      }
+    },
     "openrouter": {
       "options": {
-        "apiKey": "{env:OPENROUTER_API_KEY}"
+        "baseURL": "relais/openrouter",
+        "apiKey": "jeton-du-relais"
+      }
+    },
+    "groq": {
+      "options": {
+        "baseURL": "relais/groq",
+        "apiKey": "jeton-du-relais"
+      }
+    },
+    "cerebras": {
+      "options": {
+        "baseURL": "relais/cerebras",
+        "apiKey": "jeton-du-relais"
+      }
+    },
+    "mistral": {
+      "options": {
+        "baseURL": "relais/mistral",
+        "apiKey": "jeton-du-relais"
+      }
+    },
+    "deepseek": {
+      "options": {
+        "baseURL": "relais/deepseek",
+        "apiKey": "jeton-du-relais"
+      }
+    },
+    "anthropic": {
+      "options": {
+        "baseURL": "relais/anthropic",
+        "apiKey": "jeton-du-relais"
+      }
+    },
+    "openai": {
+      "options": {
+        "baseURL": "relais/openai",
+        "apiKey": "jeton-du-relais"
       }
     }
   },

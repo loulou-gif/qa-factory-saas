@@ -28,11 +28,15 @@ def expliquer_erreur_modele(erreur: dict) -> str:
     bas = (nom + " " + detail).lower()
     statut = data.get("statusCode")
     if nom == "ProviderAuthError" or statut in (401, 403) and "proxy" not in bas or "api key" in bas or "unauthorized" in bas:
-        texte = "Le fournisseur d'IA refuse la clé : vérifier OPENROUTER_API_KEY (ou le modèle choisi)."
+        texte = "Le fournisseur d'IA refuse la clé : vérifier la clé d'API (Paramètres > Modèles d'IA) ou le modèle choisi."
     elif statut == 402 or "credit" in bas or "insufficient" in bas:
         texte = "Crédit épuisé chez le fournisseur d'IA (ou plafond mensuel atteint) : recharger ou relever le plafond."
     elif statut == 429 or "rate limit" in bas or "too many" in bas:
-        texte = "Limite d'utilisation du modèle atteinte (fréquent avec les modèles gratuits) : réessayer plus tard ou changer de modèle."
+        texte = ("Limite d'utilisation du modèle atteinte (fréquent avec les modèles gratuits) : réessayer plus tard, changer "
+                 "de modèle ou ajouter des modèles de secours (Paramètres > Modèles d'IA).")
+    elif coupure_reseau(erreur):
+        texte = ("La connexion au fournisseur d'IA a été coupée à plusieurs reprises (réseau instable, proxy ou pare-feu) : "
+                 "relancer la tâche ; si cela se répète, vérifier l'accès Internet du serveur.")
     elif "proxy" in bas or "econnrefused" in bas or "enotfound" in bas or "fetch failed" in bas or "network" in bas or "timeout" in bas:
         texte = "L'assistant ne parvient pas à joindre le fournisseur d'IA (réseau, proxy ou pare-feu du serveur)."
     elif nom == "ContextOverflowError":
@@ -44,9 +48,46 @@ def expliquer_erreur_modele(erreur: dict) -> str:
     return f"{texte} Détail : {nom} {detail}".strip()
 
 
+MOTS_COUPURE = ("econnreset", "socket connection was closed", "socket hang up", "cannot connect to api", "etimedout",
+                "epipe", "connection reset", "other side closed", "terminated", "und_err")
+REPRISES_MAX = 3
+MESSAGE_REPRISE = ("La connexion au modèle a été coupée pendant ton travail. Reprends exactement là où tu t'es arrêté, "
+                   "sans refaire ce qui est déjà écrit sur le disque, et termine la tâche demandée.")
+
+
+MOTS_LIMITE = ("rate limit", "rate_limit", "ratelimit", "quota", "freeusagelimit", "usage limit", "limit exceeded",
+               "too many requests", "resource_exhausted", "resource exhausted", "insufficient", "credits", "credit balance",
+               "payment required", "billing", "aucune clé d'api")
+MESSAGE_SUITE = ("Le modèle précédent a atteint sa limite d'utilisation. Poursuis la tâche demandée là où elle en est : "
+                 "regarde ce qui est déjà écrit sur le disque, ne le refais pas, et termine le travail.")
+
+
+def limite_atteinte(erreur: dict) -> bool:
+    """Le modèle ne peut plus servir pour l'instant : quota ou crédit épuisé, trop de requêtes, clé absente ou refusée.
+    La tâche peut alors continuer avec le modèle de secours suivant."""
+    data = erreur.get("data") or {}
+    if erreur.get("name") == "ProviderAuthError":
+        return True
+    if data.get("statusCode") in (401, 402, 403, 429):
+        return True
+    bas = (str(erreur.get("name", "")) + " " + str(data.get("message") or "") + " " + str(data.get("responseBody") or "")).lower()
+    return any(m in bas for m in MOTS_LIMITE)
+
+
+def coupure_reseau(erreur: dict) -> bool:
+    """Erreur passagère de connexion au fournisseur d'IA (la session peut reprendre là où elle s'est arrêtée)."""
+    data = erreur.get("data") or {}
+    bas = (str(erreur.get("name", "")) + " " + str(data.get("message") or "")).lower()
+    if erreur.get("name") in ("ProviderAuthError", "ContextOverflowError", "MessageAbortedError"):
+        return False
+    return any(m in bas for m in MOTS_COUPURE) or data.get("statusCode") in (502, 503, 504)
+
+
 class Moteur:
     def __init__(self):
         self._client = None
+        self.sessions_essai = {}   # session d'essai d'un modèle -> utilisateur (clé personnelle)
+        self._sessions = {}        # cache session -> utilisateur (sessions filles comprises)
 
     @property
     def client(self) -> httpx.Client:
@@ -99,65 +140,169 @@ class Moteur:
         corps = re.sub(r"^---\n.*?\n---\n", "", f.read_text(encoding="utf-8"), count=1, flags=re.S)
         return corps.replace("$ARGUMENTS", arguments).strip()
 
-    def executer(self, base, tid, commande, arguments, outils=None):
+    def modeles_disponibles(self) -> dict:
+        """{fournisseur: [modèles]} connus du moteur (suggestions de la page Modèles d'IA) ; {} s'il ne répond pas."""
+        try:
+            d = self.client.get("/config/providers", timeout=15).json()
+        except Exception:  # noqa: BLE001
+            return {}
+        return {p["id"]: sorted((p.get("models") or {}).keys()) for p in d.get("providers") or [] if p.get("id")}
+
+    def utilisateur_de_session(self, base, sid: str, profondeur: int = 0):
+        """Utilisateur pour lequel le moteur appelle le fournisseur (clé personnelle) : celui qui a lancé la tâche de la
+        session, ou de sa session mère (sous-agent), ou l'auteur d'un essai de modèle. None si inconnu."""
+        if not sid:
+            return None
+        if sid in self.sessions_essai:
+            return self.sessions_essai[sid]
+        if sid in self._sessions:
+            return self._sessions[sid]
+        r = base.un("SELECT cree_par FROM taches WHERE session_id = ?", (sid,))
+        uid = r["cree_par"] if r else None
+        if not r and profondeur < 3:
+            try:
+                parent = (self.client.get(f"/session/{sid}", timeout=10).json() or {}).get("parentID")
+            except Exception:  # noqa: BLE001
+                parent = None
+            uid = self.utilisateur_de_session(base, parent, profondeur + 1) if parent else None
+        if r or uid:
+            if len(self._sessions) > 5000:
+                self._sessions.clear()
+            self._sessions[sid] = uid
+        return uid
+
+    def essayer_modele(self, modele: str, uid=None) -> tuple:
+        """Courte demande au modèle, sans outil, à travers le moteur : (réussi, explication).
+        uid : utilisateur dont la clé personnelle est essayée (sinon clé de l'entreprise ou du serveur)."""
+        fournisseur, _, nom = modele.partition("/")
+        try:
+            s = self.client.post("/session", json={"title": f"Essai du modèle {modele}"[:80]})
+            s.raise_for_status()
+            sid = s.json()["id"]
+            self.sessions_essai[sid] = uid
+            r = self.client.post(f"/session/{sid}/message", timeout=120, json={
+                "parts": [{"type": "text", "text": "Réponds uniquement : OK"}],
+                "model": {"providerID": fournisseur, "modelID": nom}, "tools": {"*": False}})
+        except httpx.HTTPError as e:
+            return False, f"moteur injoignable ({e.__class__.__name__})"
+        if r.status_code >= 400:
+            texte = r.text[:300]
+            if "ModelNotFound" in texte or "not found" in texte.lower():
+                return False, f"modèle inconnu du moteur ({modele}) : vérifier son identifiant"
+            return False, f"le moteur refuse la demande (HTTP {r.status_code}) : {texte}"
+        try:
+            d = r.json()
+        except ValueError:
+            return False, "réponse illisible du moteur"
+        erreur = (d.get("info") or {}).get("error")
+        if erreur:
+            return False, expliquer_erreur_modele(erreur)
+        if not any(p.get("type") == "text" and (p.get("text") or "").strip() for p in d.get("parts") or []):
+            return False, "le modèle n'a rien répondu"
+        return True, ""
+
+    def executer(self, base, tid, commande, arguments, outils=None, modele=None, secours=None):
         """Lance la commande dans une nouvelle session et suit son déroulement jusqu'à la fin.
 
         outils : si fourni, la commande est envoyée comme message avec ces outils activés ou coupés
-        (ex. seul le navigateur de la tâche) ; sinon par l'API des commandes d'OpenCode."""
-        if not reglages.modele:
-            raise ErreurMoteur("Aucun modèle configuré (variable QAF_MODELE).")
+        (ex. seul le navigateur de la tâche) ; sinon par l'API des commandes d'OpenCode.
+        modele : modèle de la tâche (Paramètres > Modèles d'IA) ; à défaut celui du serveur (QAF_MODELE).
+        secours : modèles essayés dans l'ordre si le modèle atteint sa limite ; la session continue avec le suivant."""
+        modele_complet = modele or reglages.modele
+        restants = [m for m in (secours or []) if m and m != modele_complet]
+        if not modele_complet:
+            raise ErreurMoteur("Aucun modèle configuré (Paramètres > Modèles d'IA, ou variable QAF_MODELE).")
         s = self.client.post("/session", json={"title": f"{commande} {arguments}"[:80] + f" — tâche {tid}"})
         s.raise_for_status()
         sid = s.json()["id"]
         base.maj_tache(tid, session_id=sid)
-        base.ajouter_journal(tid, f"Session OpenCode {sid} ouverte, modèle {reglages.modele}.")
-
-        retour = {}
+        base.ajouter_journal(tid, f"Session OpenCode {sid} ouverte, modèle {modele_complet}.")
 
         if outils is None:
-            chemin, corps = f"/session/{sid}/command", {"command": commande, "arguments": arguments, "model": reglages.modele}
+            chemin, corps = f"/session/{sid}/command", {"command": commande, "arguments": arguments, "model": modele_complet}
         else:
-            fournisseur, _, modele = reglages.modele.partition("/")
+            fournisseur, _, modele = modele_complet.partition("/")
             chemin, corps = f"/session/{sid}/message", {
                 "parts": [{"type": "text", "text": self.texte_commande(commande, arguments)}],
                 "model": {"providerID": fournisseur, "modelID": modele}, "tools": outils}
 
-        def lancer():
-            try:
-                r = self.client.post(chemin, json=corps, timeout=reglages.duree_max_tache_min * 60)
-                retour["r"] = r
-            except Exception as e:  # noqa: BLE001
-                retour["e"] = e
-
-        fil = threading.Thread(target=lancer, daemon=True)
-        fil.start()
         debut = time.time()
-        while fil.is_alive():
-            fil.join(reglages.intervalle_suivi_s)
-            self._relever(base, tid, sid)
-            t = base.tache(tid)
-            if t["annulation"]:
-                self.client.post(f"/session/{sid}/abort")
-                base.ajouter_journal(tid, "Arrêt demandé : session interrompue.")
-                fil.join(30)
-                break
-            if time.time() - debut > reglages.duree_max_tache_min * 60:
-                self.client.post(f"/session/{sid}/abort")
-                raise ErreurMoteur(f"Durée maximale dépassée ({reglages.duree_max_tache_min} min).")
-        bilan = self._relever(base, tid, sid)
-        if "e" in retour:
-            raise ErreurMoteur(f"Échec de l'appel au moteur : {retour['e']}")
-        r = retour.get("r")
-        if r is None:
-            return bilan
-        if r.status_code >= 400:
-            raise ErreurMoteur(f"Le moteur a refusé la commande (HTTP {r.status_code}) : {r.text[:300]}")
-        erreur = (r.json().get("info") or {}).get("error")
-        if erreur:
-            raise ErreurMoteur(expliquer_erreur_modele(erreur))
-        return bilan
+        reprises = 0
+        courant = modele_complet
+        while True:
+            retour = {}
 
-    def _relever(self, base, tid, sid) -> dict:
+            def lancer(chemin=chemin, corps=corps):
+                try:
+                    retour["r"] = self.client.post(chemin, json=corps, timeout=reglages.duree_max_tache_min * 60)
+                except Exception as e:  # noqa: BLE001
+                    retour["e"] = e
+
+            fil = threading.Thread(target=lancer, daemon=True)
+            fil.start()
+            while fil.is_alive():
+                fil.join(reglages.intervalle_suivi_s)
+                self._relever(base, tid, sid, courant)
+                t = base.tache(tid)
+                if t["annulation"]:
+                    self.client.post(f"/session/{sid}/abort")
+                    base.ajouter_journal(tid, "Arrêt demandé : session interrompue.")
+                    fil.join(30)
+                    return self._relever(base, tid, sid, courant)
+                if time.time() - debut > reglages.duree_max_tache_min * 60:
+                    self.client.post(f"/session/{sid}/abort")
+                    raise ErreurMoteur(f"Durée maximale dépassée ({reglages.duree_max_tache_min} min).")
+            bilan = self._relever(base, tid, sid, courant)
+            if "e" in retour:
+                raise ErreurMoteur(f"Échec de l'appel au moteur : {retour['e']}")
+            r = retour.get("r")
+            if r is None:
+                return bilan
+            if r.status_code >= 400:
+                raise ErreurMoteur(f"Le moteur a refusé la commande (HTTP {r.status_code}) : {r.text[:300]}")
+            erreur = (r.json().get("info") or {}).get("error")
+            if not erreur:
+                return bilan
+            jamais_repondu = coupure_reseau(erreur) and not r.json().get("parts")
+            if restants and (limite_atteinte(erreur) or jamais_repondu):
+                # Limite du modèle atteinte : la même session continue avec le modèle de secours suivant.
+                suivant = restants.pop(0)
+                detail = ((erreur.get("data") or {}).get("message") or erreur.get("name") or "")[:160]
+                base.ajouter_journal(tid, f"Limite atteinte avec {courant} ({detail}) : la tâche continue avec {suivant}.")
+                courant, reprises = suivant, 0
+                if base.tache(tid)["annulation"]:
+                    return self._relever(base, tid, sid, courant)
+                fournisseur, _, nom = courant.partition("/")
+                chemin = f"/session/{sid}/message"
+                corps = {"parts": [{"type": "text", "text": MESSAGE_SUITE}], "model": {"providerID": fournisseur, "modelID": nom}}
+                if outils is not None:
+                    corps["tools"] = outils
+                continue
+            if not coupure_reseau(erreur) or reprises >= REPRISES_MAX:
+                raise ErreurMoteur(expliquer_erreur_modele(erreur))
+            if not r.json().get("parts"):
+                # OpenCode a déjà réessayé plusieurs fois sans obtenir un seul mot du modèle : ce n'est pas une coupure
+                # passagère pendant le travail, le fournisseur refuse ou ne répond pas (souvent le quota gratuit épuisé).
+                raise ErreurMoteur(
+                    "Le modèle n'a jamais répondu : le fournisseur d'IA ferme la connexion dès la demande. Avec un modèle "
+                    "gratuit (opencode/…-free), c'est en général la limite d'utilisation gratuite atteinte pour cette adresse "
+                    "Internet : réessayer plus tard, ajouter des modèles de secours ou choisir un modèle avec une clé "
+                    "(Paramètres > Modèles d'IA). Sinon, vérifier l'accès "
+                    f"Internet du serveur. Détail : {(erreur.get('data') or {}).get('message', '')[:200]}")
+            # Coupure passagère : la session garde tout son contexte, on la relance là où elle s'est arrêtée.
+            reprises += 1
+            base.ajouter_journal(tid, f"Connexion au modèle coupée ({(erreur.get('data') or {}).get('message', '')[:120]}) : "
+                                      f"reprise {reprises} sur {REPRISES_MAX}.")
+            time.sleep(min(30, 5 * reprises * reglages.intervalle_suivi_s))
+            if base.tache(tid)["annulation"]:
+                return self._relever(base, tid, sid, courant)
+            fournisseur, _, nom = courant.partition("/")
+            chemin = f"/session/{sid}/message"
+            corps = {"parts": [{"type": "text", "text": MESSAGE_REPRISE}], "model": {"providerID": fournisseur, "modelID": nom}}
+            if outils is not None:
+                corps["tools"] = outils
+
+    def _relever(self, base, tid, sid, modele=None) -> dict:
         """Étapes, compte rendu, coût ; demandes de confirmation et questions en attente."""
         try:
             msgs = self.client.get(f"/session/{sid}/message").json()
@@ -182,7 +327,7 @@ class Moteur:
                     textes.append(p["text"].strip())
         attente = self._traiter_automatiquement(base, tid, self._en_attente(sid))
         bilan = {"etapes": etapes[-200:], "compte_rendu": textes[-1] if textes else "", "cout_usd": round(cout, 4),
-                 "jetons": jetons, "messages": len(msgs)}
+                 "jetons": jetons, "messages": len(msgs), **({"modele": modele} if modele else {})}
         t = base.tache(tid)
         statut = t["statut"]
         if statut in ("en_cours", "attente_confirmation"):

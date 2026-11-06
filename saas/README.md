@@ -2,7 +2,7 @@
 
 Application web interne : les testeurs utilisent QA Factory depuis un navigateur, sans rien installer. Elle pilote le même moteur que `qa-factory` (skills, règles ISTQB, scripts, MCP Squash), installé une seule fois sur un serveur.
 
-État : **phases 1 et 2** de la feuille de route (moteur sur serveur, temps A complet). Le temps B (exploration, recette, cahier de tests, manuel) arrive en phase 5 ; d'ici là, il se fait avec `qa-factory` sur un poste.
+État : **phases 1 et 2** de la feuille de route (moteur sur serveur, temps A complet), plus le temps B dans l'application : tests de l'application par l'assistant, mise à jour de Squash, automatisation Playwright et exécution des scripts. L'exploration libre, le cahier de tests et le manuel se font encore avec `qa-factory` sur un poste.
 
 ## Ce que fait l'application
 
@@ -18,7 +18,7 @@ Un parcours simple, sans formation (règles de conception : skill `interface-qa-
 
 Puis **Envoyer dans Squash** : on choisit le projet Squash dans un champ de recherche qui liste les projets visibles avec son compte (une partie du nom ou le numéro suffit, au clavier ou à la souris) et, si on le connaît, le lien de l'application testée (enregistré dans `projet.json`). L'application vérifie ce qui existe, annonce ce qui sera créé, puis envoie après confirmation, avec une barre de progression réelle. **Arrêter l'envoi** l'interrompt avant l'élément suivant ; une relance reprend la suite, sans doublon.
 
-Chaque utilisateur connecte son Squash dans **Paramètres › Squash**. Le jeton d'API personnel est proposé par défaut (révocable, avec date d'expiration) ; identifiant et mot de passe restent possibles. Sur le service public, une adresse Squash qui mène à un réseau interne est refusée, y compris si le nom change de réponse entre le contrôle et la connexion (`reseau_public.mjs`). Choix du modèle d'IA par l'utilisateur : voir [docs/SPEC-MODELES.md](../docs/SPEC-MODELES.md) (pas encore disponible).
+Chaque utilisateur connecte son Squash dans **Paramètres › Connexion Squash**. Le jeton d'API personnel est proposé par défaut (révocable, avec date d'expiration) ; identifiant et mot de passe restent possibles. Sur le service public, une adresse Squash qui mène à un réseau interne est refusée, y compris si le nom change de réponse entre le contrôle et la connexion (`reseau_public.mjs`).
 - Les cas suspendus à une **question bloquante encore ouverte** ne partent pas ; dès que la question est répondue ou classée sans objet, la page propose « Envoyer N nouveaux cas dans Squash ».
 - Chaque jeu de données devient, sur le cas, un **jeu de données Squash** (nom `JDD-004 Informations de livraison valides`) avec ses **paramètres** et leurs valeurs ; le prérequis du cas cite les paramètres (`Prénom = ${Prenom}`), pour que Squash affiche les valeurs du jeu choisi à l'exécution.
 - **Premier envoi** : tout est rangé dans un dossier « QA Factory - <nom du projet> », créé côté exigences et côté cas de tests. Le reste du projet Squash n'est jamais touché, même s'il contient déjà des éléments de mêmes références (autre outil, ancienne publication).
@@ -28,6 +28,38 @@ Chaque utilisateur connecte son Squash dans **Paramètres › Squash**. Le jeton
   - un champ changé des deux côtés est montré avec les deux versions : Squash est gardé, sauf si l'on coche « Remplacer par la version QA Factory ».
   Quand une exigence reçoit une nouvelle version, les cas qui la couvrent sont liés aussi à la nouvelle. Un élément de même référence (CT0001, EX-001) présent dans le dossier QA Factory sans avoir été créé par QA Factory n'est ni créé ni modifié : il est signalé. Un passage en Obsolète qui échoue est signalé et retenté au prochain envoi.
 - Jeux de données : un jeu qui a déjà une valeur dans Squash n'est pas touché, seuls les jeux encore vides sont complétés ; une relance ne crée aucun doublon.
+
+### Temps B : tester l'application et automatiser
+
+Plan et décisions : [docs/PLAN-TEMPS-B.md](../docs/PLAN-TEMPS-B.md). Une fois les cas validés et le lien de l'application renseigné (page **Application testée**, avec des comptes de test chiffrés) :
+1. **Tester l'application** : l'assistant exécute les cas dans un navigateur propre à la tâche, limité aux domaines de l'application ; il ne voit jamais les mots de passe (il saisit le nom du secret). Résultats, rapport HTML/Excel et corrections de cas proposées, à accepter ou non.
+2. **Mettre à jour Squash** avec les cas corrigés (nouvelle version, l'ancienne passe en Obsolète).
+3. **Automatiser** : l'application classe les scénarios (criticité, usage, stabilité observée, coût) ; le testeur coche, choisit JavaScript ou TypeScript, et l'assistant écrit les scripts Playwright dans le dépôt du projet (`projets/<projet>/05-automatisation/`) en relevant les locators réels.
+4. **Exécuter les scripts**, sans IA : Playwright lance les tests avec les comptes du projet. Avant, les fichiers du gabarit sont rétablis et les scripts contrôlés (pas d'import autre que Playwright et le dépôt, pas d'accès système ni réseau hors du navigateur, pas d'adresse hors de l'application) ; le navigateur ne résout que les domaines de l'application ; le processus ne reçoit que l'URL et les comptes ; les traces sont désactivées et les secrets retirés des rapports. Résultats par scénario, **rapport Playwright**, inventaire `docs/test-inventory.md` mis à jour, **archive .zip** du dépôt (sans `.env`) pour le reprendre sur un poste.
+
+5. **Documents de recette** (page du projet › Documents de recette) :
+   - **Cahier de tests** (Excel), produit sans IA à partir des cas validés, tous les cas ou les nominaux seulement ;
+   - **Manuel utilisateur** (Word) : l'assistant parcourt l'application avec les comptes du projet (fonctionnalités cochées), prend les captures et écrit le contenu (`contenu.json`, des données, jamais du code) ; l'application le contrôle (secrets masqués, captures vérifiées) puis le met en page. Les points non observés sont listés dans `points_a_confirmer_manuel.md`. « Refaire la mise en page » reprend la dernière rédaction dans le modèle actuel, sans relancer l'IA.
+
+### Menu et paramètres
+
+Un menu latéral à gauche (tiroir sur téléphone) : **Nouvelle analyse**, **Projets**, **Activité** (les tâches de tous les projets), et en bas, au-dessus de l'utilisateur connecté, **Paramètres**, une page qui regroupe :
+- **Connexion Squash** : propre à chaque utilisateur ;
+- **Modèles d'IA** : listes déroulantes des modèles connus (gratuits avec une clé gratuite, gratuits sans clé, payants), ou saisie libre d'un identifiant. Fournisseurs : Google Gemini, OpenRouter, Groq, Cerebras, Mistral, DeepSeek, Anthropic, OpenAI, et OpenCode (gratuit, sans clé).
+  - l'administrateur règle un modèle principal, un modèle par usage (analyse, tests, automatisation, documents) et jusqu'à 5 **modèles de secours** : quand un modèle atteint sa limite (quota gratuit, crédit épuisé, clé absente ou refusée, fournisseur qui ne répond pas), la tâche continue avec le suivant dans la même session, sans rien refaire ; le journal de la tâche l'indique ;
+  - les **modèles gratuits partagés** (OpenRouter « :free », OpenCode) ne sont utilisés que si l'administrateur coche leur autorisation : leurs fournisseurs peuvent garder les documents envoyés pour entraîner leurs modèles (même remarque pour les offres gratuites de Google et de Mistral) ;
+  - **clés** : celles de l'entreprise (administrateur) et les **clés personnelles** de chaque utilisateur, utilisées en priorité pour les tâches qu'il lance (le relais retrouve l'utilisateur par la session du moteur). Avec une clé Gemini gratuite par personne, chacun a son propre quota gratuit. Clés chiffrées en base, seuls les 4 derniers caractères affichés ;
+  - chaque modèle et chaque nouvelle clé reçoivent un court essai avant l'enregistrement ; une clé refusée annule l'enregistrement, une clé absente ou une limite atteinte est seulement signalée. Ce qui n'est pas renseigné reprend les réglages du serveur (`QAF_MODELE`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`…) ;
+- **Modèles de documents** : le modèle Excel du cahier et le modèle Word du manuel de l'entreprise. Sans modèle déposé, les modèles internes servent. Le dépôt est analysé et le résultat affiché (colonnes reconnues, marqueurs, avertissements) ; les fichiers avec macros sont refusés ;
+- **Équipe** (administrateur) et **Mon compte**.
+
+Modèles d'entreprise :
+- **cahier (.xlsx)** : la ligne d'en-têtes du tableau est repérée par ses libellés (« Réf. », « Action à réaliser », « Résultat attendu »… avec ou sans accents ni pluriels) ; une ligne par étape quand il y a une colonne d'étape ou de numéro d'étape, sinon une ligne par cas ; la mise en forme de la première ligne sous les en-têtes est reprise ; « Résultat obtenu », « Statut », « Commentaire » restent vides. Marqueurs remplacés partout : `{{PROJET}}`, `{{TITRE}}`, `{{VERSION}}`, `{{DATE}}`, `{{AUTEUR}}`, `{{CONTACT}}`, `{{CLIENT}}`, `{{URL}}`, `{{DESCRIPTION}}`, `{{NB_CAS}}`, `{{ENVIRONNEMENT}}` ;
+- **manuel (.docx)** : le contenu se place à `{{CONTENU}}` (sinon à la fin), le sommaire à `{{SOMMAIRE}}` ; les titres, légendes et paragraphes prennent les styles du modèle (Titre 1 à 3, Légende) ; marqueurs `{{PROJET}}`, `{{TITRE}}`, `{{SOUS_TITRE}}`, `{{VERSION}}`, `{{DATE}}`, `{{AUTEUR}}`, `{{CLIENT}}`, `{{URL}}`, y compris dans les en-têtes et pieds de page.
+
+**Relais IA** : le moteur ne reçoit jamais les clés d'API. Ses fournisseurs pointent vers l'application (`/ia/<fournisseur>/…`, jeton interne dérivé de `OPENCODE_SERVER_PASSWORD`), qui ne laisse passer que les routes d'inférence, ajoute la clé (celle des Paramètres, sinon celle du serveur) et relaie la réponse au fil de l'eau.
+
+Playwright (`/opt/qaf-playwright`, variable `QAF_PLAYWRIGHT_DIR`) et le MCP Playwright (`/opt/qaf-playwright-mcp`) sont installés dans l'image à versions figées, chacun avec son Chromium ; les dépôts des projets n'ont pas de `node_modules`.
 
 Garde-fous propres à la version serveur :
 - l'agent IA n'a **aucun** accès à Squash (le MCP squash-tm est désactivé pour lui), ni au web, ni hors du dépôt ; l'envoi dans Squash passe uniquement par le bouton, avec le code de publication du MCP ;
@@ -65,11 +97,11 @@ Choisir le modèle :
 navigateur ──HTTPS──> [web]  application FastAPI (port 8000)
                         │  API protégée par mot de passe (réseau Docker interne)
                         v
-                      [moteur]  opencode serve ──> OpenRouter (modèle imposé, clé côté serveur)
+                      [moteur]  opencode serve ──> [web] /ia (relais, ajoute la clé) ──> OpenRouter / Anthropic / OpenAI
                         │
 [web] ── publier_squash.mjs ──> Squash TM (seul chemin d'écriture, sur confirmation)
 volume « projets » : projets/<code>/01-entrant … 04-livrables, partagé par les deux conteneurs
-volume « donnees » : base SQLite (comptes, tâches, audit) et clé de session
+volume « donnees » : base SQLite (comptes, tâches, audit, paramètres), clé de session, modèles de documents
 ```
 
 Les dossiers de projets ont exactement la même organisation que dans `qa-factory` : les skills et les scripts fonctionnent sans changement.
@@ -149,14 +181,15 @@ Le test de parcours lance le vrai OpenCode avec le faux modèle (`saas/dev/faux_
 | `app/taches.py` | File des tâches longues (IA, publication, specs) |
 | `app/projets.py` | Opérations sur les dossiers de projets via `outils/` |
 | `app/securite.py`, `app/db.py` | Comptes, rôles, CSRF ; base SQLite |
+| `app/parametres.py`, `app/relais_ia.py` | Paramètres de l'outil (modèles d'IA, clés, modèles de documents) ; relais vers le fournisseur d'IA |
 | `publier_squash.mjs` | Publication Squash sans IA (code du MCP squash-tm) |
 | `opencode.serveur.json`, `config_moteur.py` | Configuration OpenCode du serveur (surcouche prioritaire sur `opencode.json`) |
 | `Dockerfile`, `docker-compose.yml`, `demarrer.sh`, `.env.exemple` | Installation |
 
 ## Limites connues de cette version
 
-- Temps B non disponible (phase 5) : le navigateur Playwright du moteur est désactivé.
+- Temps B : l'exploration libre ne se fait pas encore dans l'application (avec `qa-factory` sur un poste). Le manuel utilisateur dépend de la qualité du modèle d'IA : relire `points_a_confirmer_manuel.md`. Les tests d'API (fixture `request`) ne sont pas pris en charge par l'exécution des scripts.
 - Base SQLite : suffisante pour une équipe ; à remplacer par PostgreSQL si l'outil s'ouvre à plusieurs équipes.
 - Comptes locaux uniquement (pas encore de connexion avec les comptes Windows de l'entreprise).
 - Une connexion Squash par utilisateur : dans Squash, les créations apparaissent sous le compte de la personne qui a envoyé. Un projet déjà envoyé dans une instance Squash ne peut pas être envoyé dans une autre.
-- L'image Docker n'a pas pu être construite dans l'environnement de développement (registre Docker inaccessible) : la première construction se fait sur le serveur ; chaque commande de l'image a été vérifiée séparément.
+- L'image a été construite et vérifiée sous Docker Desktop le 2026-11-06 (moteur et web, faux modèle) : écriture des scripts par l'assistant, exécution réelle sur SauceDemo, navigateur de l'agent (MCP) avec secrets masqués et domaines limités. Le modèle réel (clé OpenRouter) reste à essayer.

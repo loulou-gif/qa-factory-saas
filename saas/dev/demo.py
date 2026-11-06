@@ -6,7 +6,7 @@ Fonctionne sous Windows, macOS et Linux.
 
     pip install -r saas/requirements.txt
 
-    # Avec une clé OpenRouter (la clé est lue dans la variable OPENROUTER_API_KEY) :
+    # Avec une clé OpenRouter (OPENROUTER_API_KEY, dans le terminal ou dans saas/.env) :
     python saas/dev/demo.py --modele openrouter/anthropic/claude-sonnet-4.5
 
     # Avec un modèle gratuit d'OpenCode, sans clé (qualité moindre, offre limitée dans le temps) :
@@ -26,6 +26,7 @@ compilé est cherché à côté du dépôt (../squash-tm-mcp) ou dans SQUASH_MCP
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -42,6 +43,41 @@ SAAS = RACINE / "saas"
 # Le moteur n'utilise pas 4096 : c'est le port par défaut d'OpenCode, souvent déjà pris par OpenCode lui-même.
 PORTS = {"modele": int(os.environ.get("QAF_PORT_MODELE", "4110")), "moteur": int(os.environ.get("QAF_PORT_MOTEUR", "4196")),
          "web": int(os.environ.get("QAF_PORT", "8000"))}
+
+
+def preparer_playwright(dossier: Path) -> dict:
+    """Playwright de la démo, comme dans l'image Docker (mêmes versions, lues dans le Dockerfile) : un dossier pour
+    l'exécution des scripts, un pour le navigateur de l'agent (MCP), chacun avec son Chromium. Installé une fois ;
+    sans lui, le MCP serait téléchargé par npx à chaque tâche et son Chromium manquerait."""
+    v = dict(re.findall(r"^ARG (PLAYWRIGHT_\w+)=(\S+)", (SAAS / "Dockerfile").read_text(encoding="utf-8"), re.M))
+    paquets = {"playwright": [f"@playwright/test@{v['PLAYWRIGHT_VERSION']}", "typescript@5.7.3", "@types/node@22.20.5"],
+               "playwright-mcp": [f"@playwright/mcp@{v['PLAYWRIGHT_MCP_VERSION']}"]}
+    npm, node = shutil.which("npm"), shutil.which("node")
+    for nom, liste in paquets.items():
+        d = dossier / nom
+        temoin = d / "installe.txt"
+        if temoin.exists() and temoin.read_text(encoding="utf-8") == " ".join(liste):
+            continue
+        if not npm or not node:
+            print("Node.js introuvable : navigateur de test et exécution des scripts indisponibles.")
+            return {}
+        print(f"Installation de {' '.join(liste)} et de son Chromium (une seule fois)...")
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "package.json").write_text(json.dumps({"name": f"qaf-{nom}", "private": True}), encoding="utf-8")
+        ok = subprocess.run([npm, "install", "--no-audit", "--no-fund", "--save-exact", "--fetch-retries", "5", *liste],
+                            cwd=d).returncode == 0
+        ok = ok and subprocess.run([node, str(d / "node_modules" / "playwright" / "cli.js"), "install", "chromium"],
+                                   cwd=d).returncode == 0
+        if not ok:
+            print(f"Installation de {nom} incomplète (réseau ?) : relancer la démo pour réessayer.")
+            continue
+        temoin.write_text(" ".join(liste), encoding="utf-8")
+    env = {}
+    if (dossier / "playwright" / "installe.txt").exists():
+        env["QAF_PLAYWRIGHT_DIR"] = str(dossier / "playwright")
+    if (dossier / "playwright-mcp" / "installe.txt").exists():
+        env["PLAYWRIGHT_MCP_CLI"] = str(dossier / "playwright-mcp" / "node_modules" / "@playwright" / "mcp" / "cli.js")
+    return env
 
 
 def arreter(proc_ou_pid):
@@ -97,7 +133,18 @@ def _arret_demande(*_):
     raise KeyboardInterrupt  # fermeture de la fenêtre ou arrêt du service : même nettoyage que Ctrl+C
 
 
+def charger_env(fichier: Path):
+    """Variables de saas/.env (ignoré par Git, ex. OPENROUTER_API_KEY) ; celles déjà définies dans le terminal priment."""
+    if not fichier.exists():
+        return
+    for ligne in fichier.read_text(encoding="utf-8").splitlines():
+        cle, egal, valeur = ligne.strip().partition("=")
+        if egal and cle and not cle.startswith("#") and not os.environ.get(cle.strip()):
+            os.environ[cle.strip()] = valeur.strip().strip('"').strip("'")
+
+
 def main():
+    charger_env(SAAS / ".env")
     signal.signal(signal.SIGTERM, _arret_demande)
     if hasattr(signal, "SIGBREAK"):  # Windows : fermeture de la console
         signal.signal(signal.SIGBREAK, _arret_demande)
@@ -113,7 +160,7 @@ def main():
                  "  python saas/dev/demo.py --modele opencode/deepseek-v4.1-flash-free   (gratuit, sans clé)\n"
                  "  python saas/dev/demo.py --simulation                                 (sans IA)")
     if modele.startswith("openrouter/") and not os.environ.get("OPENROUTER_API_KEY"):
-        sys.exit("Clé OpenRouter absente : définir la variable OPENROUTER_API_KEY (voir saas/README.md), puis relancer.")
+        print("Pas de variable OPENROUTER_API_KEY : renseigner la clé dans l'application, Paramètres > Modèles d'IA.")
     fichier_pid = SAAS / "donnees-demo" / "demo.pid"
     if fichier_pid.exists():  # processus restés actifs après une démo précédente (fenêtre fermée…) : on les arrête
         for ligne in fichier_pid.read_text().split():
@@ -131,9 +178,12 @@ def main():
     opencode = shutil.which("opencode")
     if not opencode:
         sys.exit("OpenCode introuvable : npm install -g opencode-ai")
-    config = json.loads((SAAS / "opencode.serveur.json").read_text(encoding="utf-8"))
-    if modele == "simulation/demo":
-        config["provider"].update(json.loads((SAAS / "dev" / "opencode.simulation.json").read_text(encoding="utf-8"))["provider"])
+    os.environ.setdefault("OPENCODE_SERVER_PASSWORD", "demo-moteur")
+    # Fournisseurs d'IA appelés à travers l'application web, qui garde les clés (app/relais_ia.py).
+    os.environ["QAF_RELAIS_IA"] = f"http://127.0.0.1:{PORTS['web']}/ia"
+    sys.path.insert(0, str(SAAS))
+    from config_moteur import configuration
+    config = configuration(modele)
     env = dict(os.environ)
     env.update({
         "QAF_RACINE": str(RACINE), "QAF_DONNEES": str(SAAS / "donnees-demo"), "QAF_MODELE": modele,
@@ -142,6 +192,7 @@ def main():
         "QAF_ADMIN_IDENTIFIANT": "demo", "QAF_ADMIN_NOM": "Utilisateur démo", "QAF_ADMIN_MOT_DE_PASSE": "Demo-2026-qa",
         "PYTHONUNBUFFERED": "1",
     })
+    env.update(preparer_playwright(SAAS / "donnees-demo"))
     locaux = "127.0.0.1,localhost"
     for cle in ("NO_PROXY", "no_proxy"):
         env[cle] = ",".join(x for x in (env.get(cle, ""), locaux) if x)
@@ -158,7 +209,9 @@ def main():
         # OpenCode insère les variables {env:…} telles quelles dans opencode.json avant de le lire :
         # un chemin Windows (C:\Users\…) ou un mot de passe avec " ou \ rend le fichier illisible.
         # L'agent n'a de toute façon pas accès à Squash : on retire ces variables de son environnement.
-        env_moteur = {k: v for k, v in env.items() if not k.upper().startswith(("SQUASH_TM_", "SQUASH_MCP_"))}
+        # Ni les clés des fournisseurs d'IA : le moteur passe par le relais de l'application.
+        env_moteur = {k: v for k, v in env.items() if not k.upper().startswith(("SQUASH_TM_", "SQUASH_MCP_"))
+                      and k.upper() not in ("OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY")}
         moteur_proc = subprocess.Popen([opencode, "serve", "--hostname", "127.0.0.1", "--port", str(PORTS["moteur"])],
                                        cwd=RACINE, env=env_moteur, stdout=sortie, stderr=subprocess.STDOUT)
         procs.append(moteur_proc)

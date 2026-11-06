@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block titre %}Modèles de documents · QA Factory{% endblock %}
+{% block contenu %}
+<div class="etroit">
+  <a class="retour" href="/parametres">Retour aux paramètres</a>
+  <h1>Modèles de documents</h1>
+  <p class="sous-titre">Déposez le cahier de tests et le manuel utilisateur aux couleurs de votre entreprise : les documents de recette seront produits dans ces modèles.
+    Sans modèle déposé, QA Factory utilise ses modèles internes.</p>
+  {% if not modifiable %}<div class="message" style="animation:none">Seuls les administrateurs et les responsables de projet peuvent déposer un modèle.</div>{% endif %}
+
+  {% for type_, d in docs.items() %}{% set m = d.modele %}
+  <section class="bloc" id="{{ type_ }}" aria-labelledby="t-{{ type_ }}">
+    <h2 id="t-{{ type_ }}">{{ d.libelle }} {% if m %}<span class="pastille ok">Modèle de l'entreprise</span>{% else %}<span class="pastille neutre">Modèle interne</span>{% endif %}</h2>
+
+    {% if m %}
+    <p><a href="/parametres/documents/{{ type_ }}/fichier">{{ m.nom }}</a> <span class="discret petit">· {{ (m.taille / 1024)|round|int }} Ko · déposé le {{ m.depose_le[:16]|replace('T', ' à ') }}{% if m.depose_par %} par {{ m.depose_par }}{% endif %}</span></p>
+    {% set a = m.analyse %}
+    {% if type_ == 'cahier' %}
+    <p class="petit">Tableau des cas : feuille « {{ a.feuille }} », en-têtes ligne {{ a.ligne_entetes }},
+      {{ 'une ligne par étape' if a.mode == 'etapes' else 'une ligne par cas' }}.</p>
+    <div class="defile"><table class="tableau-colonnes">
+      <thead><tr><th>Colonne</th><th>En-tête du modèle</th><th>Rempli avec</th></tr></thead>
+      <tbody>{% for c in a.colonnes %}<tr><td>{{ c.lettre }}</td><td>{{ c.entete }}</td><td>{{ c.libelle }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}
+    <p class="petit">Contenu écrit {{ "à l'emplacement du marqueur {{CONTENU}}" if a.emplacement == 'marqueur' else 'à la fin du document' }}
+      · {{ 'sommaire automatique' if a.sommaire else 'pas de sommaire ({{SOMMAIRE}} absent)' }}
+      · {{ a.titres }} style{{ 's' if a.titres > 1 }} de titre sur 3{{ ' · style Légende pour les figures' if a.legende }}.</p>
+    {% endif %}
+    {% if a.marqueurs %}<p class="petit">Marqueurs remplacés : {% for x in a.marqueurs %}<code>{{ '{{' ~ x ~ '}}' }}</code>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+    {% for w in a.avertissements %}<div class="message alerte petit" style="animation:none;margin:.5rem 0 0">{{ w }}</div>{% endfor %}
+    {% else %}
+    <p class="petit">{{ d.interne }}. <a href="/parametres/documents/{{ type_ }}/fichier?interne=1">Télécharger le modèle interne</a> pour vous en inspirer.</p>
+    {% endif %}
+
+    {% if modifiable %}
+    <form method="post" action="/parametres/documents/{{ type_ }}" enctype="multipart/form-data" class="depot-modele" data-depot-modele>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="visuellement-cache" for="fichier-{{ type_ }}">Fichier {{ d.extension }}</label>
+      <input type="file" id="fichier-{{ type_ }}" name="fichier" accept="{{ d.extension }}" required>
+      <button class="bouton{{ ' discret-btn' if m }}" type="submit">{{ 'Remplacer le modèle' if m else 'Déposer le modèle' }}</button>
+    </form>
+    {% if m %}
+    <form method="post" action="/parametres/documents/{{ type_ }}/retirer" style="margin-top:.75rem">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="lien-bouton" type="submit">Retirer et revenir au modèle interne</button>
+    </form>
+    {% endif %}
+    {% endif %}
+
+    <details class="aide-modele" style="margin-top:1rem">
+      <summary>Préparer un modèle de {{ d.libelle|lower }}</summary>
+      {% if type_ == 'cahier' %}
+      <ul class="petit">
+        <li>Un classeur Excel <strong>.xlsx</strong> sans macro, avec votre mise en page (logo, en-tête, couleurs).</li>
+        <li>Une ligne d'en-têtes pour le tableau des cas, avec des libellés usuels : <em>ID</em>, <em>Fonctionnalité</em>, <em>Titre</em> ou <em>Description</em>,
+          <em>Prérequis</em>, <em>N° étape</em>, <em>Action</em> ou <em>Étape</em>, <em>Résultat attendu</em>, <em>Données</em>, <em>Priorité</em>, <em>Exigences</em>,
+          <em>Résultat obtenu</em>, <em>Statut</em>, <em>Commentaire</em>. Les trois derniers restent vides : ils se remplissent pendant la recette.</li>
+        <li>La mise en forme de la première ligne sous les en-têtes sert de modèle aux lignes écrites ; les lignes d'exemple sont remplacées.</li>
+        <li>Marqueurs remplacés n'importe où dans le classeur : {% for x in marqueurs_cahier %}<code>{{ '{{' ~ x ~ '}}' }}</code>{{ ', ' if not loop.last }}{% endfor %}.</li>
+      </ul>
+      {% else %}
+      <ul class="petit">
+        <li>Un document Word <strong>.docx</strong> sans macro : couverture, en-têtes et pieds de page, styles, marges sont conservés.</li>
+        <li>Un paragraphe ne contenant que <code>{{ '{{CONTENU}}' }}</code> à l'endroit où écrire le manuel (sinon, à la fin du document),
+          et si vous le souhaitez un paragraphe <code>{{ '{{SOMMAIRE}}' }}</code> pour le sommaire automatique.</li>
+        <li>Les titres utilisent les styles <em>Titre 1</em>, <em>Titre 2</em>, <em>Titre 3</em> du modèle, les figures le style <em>Légende</em>.</li>
+        <li>Marqueurs remplacés, en-têtes et pieds de page compris : {% for x in marqueurs_manuel %}<code>{{ '{{' ~ x ~ '}}' }}</code>{{ ', ' if not loop.last }}{% endfor %}.</li>
+      </ul>
+      {% endif %}
+    </details>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}
+{% block script %}<script>
+document.querySelectorAll('[data-depot-modele]').forEach(function (f) {
+  f.addEventListener('submit', function () { var b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Analyse du modèle…'; });
+});
+</script>{% endblock %}

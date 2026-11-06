@@ -96,7 +96,7 @@ def test_campagne_de_tests_complete(espace, monkeypatch):
     def ajouter_navigateur(nom, config):
         vu["navigateur"] = (nom, config)
 
-    def executer(base_, tid, commande, arguments, outils=None):
+    def executer(base_, tid, commande, arguments, outils=None, modele=None, secours=None):
         vu["commande"] = (commande, arguments, outils)
         camp = json.loads((d / "04-livrables" / "execution" / arguments.split()[-1] / "campagne.json").read_text(encoding="utf-8"))
         vu["campagne"] = camp

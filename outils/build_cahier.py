@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Génère le cahier de tests Excel d'un projet à partir de 03-valide/cas-de-tests.json.
 
-Usage : python outils/build_cahier.py <projet> [--nominaux]
+Usage : python outils/build_cahier.py <projet> [--nominaux] [--modele <modele.xlsx>] [--sans-exploration]
 
 TEMPS B UNIQUEMENT : le script refuse de tourner tant que l'URL de la plateforme
 (projet.json → application.url) n'est pas renseignée et que l'exploration n'a pas
@@ -81,23 +81,47 @@ def sections_depuis_json(data, nominaux):
     return sections
 
 
+def nom_fichier(projet, nominaux, ext="xlsx"):
+    conf = projet.get("cahier", {})
+    suffixe = "_nominaux" if nominaux else ""
+    return f"Cahier_de_tests_{slug(projet.get('nom') or 'projet').replace('-', '_')}_{conf.get('version', 'V1.0')}{suffixe}.{ext}"
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("projet")
     p.add_argument("--nominaux", action="store_true", help="ne garder que les parcours nominaux")
+    p.add_argument("--modele", help="modèle Excel de l'entreprise (outils/cahier_modele.py) au lieu du modèle interne")
+    p.add_argument("--sans-exploration", action="store_true",
+                   help="application web : les cas validés suffisent (l'exploration n'est pas un préalable)")
     a = p.parse_args()
 
     d, projet = charger_projet(a.projet)
-    if not (projet.get("application", {}).get("url") or "").strip():
-        erreur("temps B uniquement : renseigner projet.json → application.url (lien de la plateforme à tester)")
-    if not (d / "04-livrables" / "exploration" / "decouvertes.md").exists():
-        erreur("temps B uniquement : l'application n'a pas encore été explorée "
-               "(04-livrables/exploration/decouvertes.md absent). Lancer /explorer d'abord.")
+    if not a.sans_exploration:
+        if not (projet.get("application", {}).get("url") or "").strip():
+            erreur("temps B uniquement : renseigner projet.json → application.url (lien de la plateforme à tester)")
+        if not (d / "04-livrables" / "exploration" / "decouvertes.md").exists():
+            erreur("temps B uniquement : l'application n'a pas encore été explorée "
+                   "(04-livrables/exploration/decouvertes.md absent). Lancer /explorer d'abord.")
+    if a.modele:
+        import cahier_modele
+        try:
+            out, n = cahier_modele.generer(a.projet, a.modele, nominaux=a.nominaux)
+        except cahier_modele.ErreurModele as e:
+            erreur(str(e))
+        print(f"{out} : {n} cas de tests (modèle de l'entreprise)")
+        return
+    generer(a.projet, a.nominaux)
+
+
+def generer(code, nominaux=False):
+    """Cahier au modèle interne (templates/cahier/modele_cahier.xlsx) ; renvoie (fichier, nombre de cas)."""
+    d, projet = charger_projet(code)
     data = charger_cas(d / "03-valide" / "cas-de-tests.json")
     if not TEMPLATE.exists():
         erreur(f"modèle introuvable : {TEMPLATE}")
     conf = projet.get("cahier", {})
-    nominaux = a.nominaux or conf.get("nominaux_uniquement", False)
+    nominaux = nominaux or conf.get("nominaux_uniquement", False)
     sections = sections_depuis_json(data, nominaux)
     if not sections:
         erreur("aucun cas de test à écrire")
@@ -125,7 +149,7 @@ def main():
     ws._images = []
 
     # --- En-tête et métadonnées (valeurs inconnues : « À renseigner », jamais inventées)
-    nom = projet.get("nom", a.projet)
+    nom = projet.get("nom", code)
     app = projet.get("application", {})
     ws["A1"] = conf.get("titre") or f"CAHIER DE TESTS {nom.upper()}"
     ws["C15"] = nom.upper()
@@ -257,12 +281,11 @@ def main():
 
     out_dir = d / "04-livrables" / "cahier"
     out_dir.mkdir(parents=True, exist_ok=True)
-    suffixe = "_nominaux" if nominaux else ""
-    nom_fichier = f"Cahier_de_tests_{slug(nom).replace('-', '_')}_{conf.get('version', 'V1.0')}{suffixe}.xlsx"
-    out = out_dir / nom_fichier
+    out = out_dir / nom_fichier(projet, nominaux)
     wb.save(out)
     journaliser(d, "cahier", f"{number} cas", [str(out.relative_to(d))])
     print(f"{out} : {number} cas de tests, lignes {FIRST_ROW}-{last}")
+    return out, number
 
 
 if __name__ == "__main__":

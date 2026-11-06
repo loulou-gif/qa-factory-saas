@@ -6,6 +6,7 @@ Prérequis : opencode, node, python avec fastapi/httpx/openpyxl/python-docx/cryp
 compilé (SQUASH_MCP_DIR, défaut ../squash-tm-mcp à côté du dépôt). Espace commun : conftest.py.
 """
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -33,7 +34,7 @@ def env(espace):
     """Démarre le faux modèle et OpenCode sur les ports réservés par l'espace commun."""
     ports = espace["ports"]
     modele = subprocess.Popen([sys.executable, str(ICI.parent / "dev" / "faux_modele.py"), str(ports["modele"])])
-    oc = subprocess.Popen(["opencode", "serve", "--port", str(ports["moteur"])], cwd=espace["racine"],
+    oc = subprocess.Popen([shutil.which("opencode") or "opencode", "serve", "--port", str(ports["moteur"])], cwd=espace["racine"],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         import httpx

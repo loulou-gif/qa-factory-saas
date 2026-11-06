@@ -34,7 +34,8 @@ def espace(tmp_path_factory):
     if not (MCP / "dist" / "publish" / "publishBatch.js").exists():
         pytest.skip(f"MCP squash-tm compilé introuvable ({MCP})")
     racine = tmp_path_factory.mktemp("espace") / "qa-factory"
-    shutil.copytree(DEPOT, racine, ignore=shutil.ignore_patterns(".git", "donnees", "donnees-demo", "__pycache__", "node_modules"))
+    shutil.copytree(DEPOT, racine, ignore=shutil.ignore_patterns(".git", "donnees", "donnees-demo", "__pycache__", "node_modules",
+                                                         "executions", "test-results", "playwright-report", "redactions"))
     for p in (racine / "projets").iterdir():
         if p.name != "saucedemo":
             shutil.rmtree(p)

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block titre %}Modèles d'IA · QA Factory{% endblock %}
+{% set noms = {} %}{% for g, lignes in catalogue %}{% for l in lignes %}{% set _ = noms.update({l.modele: l.libelle}) %}{% endfor %}{% endfor %}
+{% macro choix_modele(nom, valeur, vide) -%}
+{% set autre = valeur and valeur not in dans_catalogue %}
+<select id="{{ nom }}" name="{{ nom }}" class="choix-modele" data-autre="{{ nom }}_autre">
+  <option value="" {% if not valeur %}selected{% endif %}>{{ vide }}</option>
+  {% for groupe, lignes in catalogue %}
+  <optgroup label="{{ groupe }}">
+    {% for l in lignes %}<option value="{{ l.modele }}" {% if l.modele == valeur %}selected{% endif %}>{{ l.libelle }}</option>{% endfor %}
+  </optgroup>
+  {% endfor %}
+  <option value="{{ AUTRE }}" {% if autre %}selected{% endif %}>Autre modèle…</option>
+</select>
+<input type="text" id="{{ nom }}_autre" name="{{ nom }}_autre" class="modele-autre" list="modeles-connus" spellcheck="false"
+       value="{{ valeur if autre else '' }}" placeholder="fournisseur/modèle, ex. deepseek/deepseek-v4-pro" aria-label="Identifiant du modèle"
+       {% if not autre %}hidden{% endif %}>
+{%- endmacro %}
+{% macro nom_modele(m) %}{{ noms.get(m, m) }}{% endmacro %}
+{% block contenu %}
+<div class="etroit page-modeles">
+  <a class="retour" href="/parametres">Retour aux paramètres</a>
+  <h1>Modèles d'IA</h1>
+  <p class="sous-titre">Le modèle qui analyse, teste, automatise et rédige les documents.</p>
+  {% if simulation %}<div class="message alerte" style="animation:none">Mode démonstration : sans réglage ici, le faux modèle ({{ ia.defaut }}) est utilisé.</div>{% endif %}
+
+  {% if modifiable %}
+  <datalist id="modeles-connus">{% for m in suggestions %}<option value="{{ m }}">{% endfor %}</datalist>
+  <form method="post" action="/parametres/modeles" id="form-modeles" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    <section class="bloc">
+      <label for="principal" class="titre-champ">Modèle</label>
+      {{ choix_modele('principal', ia.principal, 'Modèle du serveur' ~ (' (' ~ ia.defaut ~ ')' if ia.defaut else '')) }}
+
+      <div class="secours">
+        <p class="titre-champ">S'il atteint sa limite, continuer avec</p>
+        <ol id="liste-secours">
+          {% for i in range(1, SECOURS_MAX + 1) %}{% set v = ia.secours[i - 1] if ia.secours|length >= i else '' %}
+          <li class="ligne-secours" {% if not v %}hidden{% endif %}>
+            {{ choix_modele('secours_' ~ i, v, 'Choisir un modèle…') }}
+            <button type="button" class="retirer-secours" aria-label="Retirer ce modèle de secours" title="Retirer">×</button>
+          </li>
+          {% endfor %}
+        </ol>
+        <button type="button" class="lien-bouton ajouter-secours" id="ajouter-secours">+ Ajouter un modèle de secours</button>
+      </div>
+
+      <div id="bloc-cles" {% if not necessaires %}hidden{% endif %}>
+        {% for f, k in cles.items() %}
+        <div class="cle-fournisseur" data-f="{{ f }}" {% if f not in necessaires %}hidden{% endif %}>
+          <label for="cle_{{ f }}">Clé {{ k.libelle }}</label>
+          {% if k.entreprise or k.serveur %}
+          <p class="etat-cle"><span class="pastille ok">{{ 'Enregistrée …' ~ k.entreprise if k.entreprise else 'Clé du serveur' }}</span>
+            <button type="button" class="lien-bouton" data-remplacer="cle_{{ f }}">Remplacer</button>
+            {% if k.entreprise %}<label class="case-en-ligne"><input type="checkbox" name="retirer_{{ f }}" value="1"> Supprimer</label>{% endif %}</p>
+          <input type="password" id="cle_{{ f }}" name="cle_{{ f }}" autocomplete="new-password" spellcheck="false" placeholder="Nouvelle clé {{ k.libelle }}" hidden>
+          {% else %}
+          <input type="password" id="cle_{{ f }}" name="cle_{{ f }}" autocomplete="new-password" spellcheck="false" placeholder="Coller la clé">
+          <p class="discret petit"><a href="{{ k.lien }}" target="_blank" rel="noopener">{{ 'Obtenir une clé gratuite' if k.gratuit else 'Obtenir une clé' }}</a>{% if k.gratuit %} · {{ k.gratuit }}{% endif %}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <label class="case gratuits" id="bloc-gratuits" {% if not partage %}hidden{% endif %}>
+        <input type="checkbox" name="gratuits" value="1" {% if ia.gratuits %}checked{% endif %}>
+        <span>J'accepte que ce service gratuit puisse réutiliser les documents envoyés.
+          <span class="discret petit">À éviter pour un cahier des charges confidentiel.</span></span>
+      </label>
+    </section>
+
+    <details class="bloc avance" {% if ia.usages.values()|select|list %}open{% endif %}>
+      <summary>Un modèle différent selon la tâche</summary>
+      <div class="grille-champs">
+        {% for cle, libelle in usages.items() %}
+        <div>
+          <label for="usage_{{ cle }}">{{ libelle }}</label>
+          {{ choix_modele('usage_' ~ cle, ia.usages[cle], 'Même modèle') }}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+
+    <div class="actions-ligne">
+      <button class="bouton" type="submit">Enregistrer</button>
+      <span class="discret petit">Chaque modèle est essayé avant l'enregistrement.</span>
+    </div>
+  </form>
+
+  {% else %}
+  <section class="bloc">
+    <p class="titre-champ">Modèle</p>
+    <p><strong>{{ nom_modele(ia.effectifs.analyse) }}</strong>{% if ia.secours %}<span class="discret"> · puis {% for m in ia.secours %}{{ nom_modele(m) }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}</p>
+    <p class="discret petit">Réglé par l'administrateur.</p>
+  </section>
+  {% if necessaires %}
+  <form method="post" action="/parametres/modeles/mes-cles" id="mes-cles" class="bloc" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <p class="titre-champ">Mes clés</p>
+    <p class="discret petit">Facultatif : votre propre clé est utilisée pour vos tâches, avec votre propre quota.</p>
+    {% for f in necessaires %}{% set k = cles[f] %}
+    <div class="cle-fournisseur">
+      <label for="ma_cle_{{ f }}">Clé {{ k.libelle }}</label>
+      {% if k.perso or k.entreprise or k.serveur %}
+      <p class="etat-cle"><span class="pastille ok">{{ 'Votre clé …' ~ k.perso if k.perso else "Clé de l'entreprise" }}</span>
+        <button type="button" class="lien-bouton" data-remplacer="ma_cle_{{ f }}">{{ 'Remplacer' if k.perso else 'Utiliser ma clé' }}</button>
+        {% if k.perso %}<label class="case-en-ligne"><input type="checkbox" name="retirer_ma_{{ f }}" value="1"> Supprimer</label>{% endif %}</p>
+      <input type="password" id="ma_cle_{{ f }}" name="ma_cle_{{ f }}" autocomplete="new-password" spellcheck="false" placeholder="Votre clé {{ k.libelle }}" hidden>
+      {% else %}
+      <p class="etat-cle"><span class="pastille alerte">Clé manquante</span></p>
+      <input type="password" id="ma_cle_{{ f }}" name="ma_cle_{{ f }}" autocomplete="new-password" spellcheck="false" placeholder="Coller votre clé">
+      <p class="discret petit"><a href="{{ k.lien }}" target="_blank" rel="noopener">{{ 'Obtenir une clé gratuite' if k.gratuit else 'Obtenir une clé' }}</a></p>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="actions-ligne"><button class="bouton" type="submit">Enregistrer</button></div>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+<noscript><style>.page-modeles [hidden] { display: block; }</style></noscript>
+{% endblock %}
+{% block script %}<script>
+(function () {
+  var form = document.getElementById('form-modeles');
+  document.querySelectorAll('[data-remplacer]').forEach(function (b) {
+    b.addEventListener('click', function () { var c = document.getElementById(b.getAttribute('data-remplacer')); c.hidden = false; c.focus(); b.hidden = true; });
+  });
+  ['form-modeles', 'mes-cles'].forEach(function (id) {
+    var f = document.getElementById(id);
+    if (f) f.addEventListener('submit', function () { var b = f.querySelector('button[type=submit]'); if (b) { b.disabled = true; b.textContent = 'Essai en cours…'; } });
+  });
+  if (!form) return;
+
+  var AUTRE = '{{ AUTRE }}', DEFAUT = '{{ ia.defaut }}';
+  function valeur(s) { var a = document.getElementById(s.getAttribute('data-autre')); return s.value === AUTRE ? (a.value || '').trim() : s.value; }
+  function partage(m) { m = (m || '').toLowerCase(); return m.indexOf('opencode/') === 0 || /:free$/.test(m) || m === 'openrouter/openrouter/free'; }
+
+  // Clés et autorisation : seulement pour les modèles choisis.
+  function maj() {
+    var choisis = [];
+    form.querySelectorAll('select.choix-modele').forEach(function (s) {
+      var li = s.closest('.ligne-secours');
+      if (li && li.hidden) return;
+      var v = valeur(s) || (s.id === 'principal' ? DEFAUT : '');
+      if (v) choisis.push(v);
+    });
+    var besoin = {};
+    choisis.forEach(function (m) { besoin[m.split('/')[0]] = true; });
+    var une = false;
+    form.querySelectorAll('.cle-fournisseur').forEach(function (d) { d.hidden = !besoin[d.getAttribute('data-f')]; une = une || !d.hidden; });
+    document.getElementById('bloc-cles').hidden = !une;
+    var g = document.getElementById('bloc-gratuits'), oui = choisis.some(partage);
+    g.hidden = !oui; g.querySelector('input').required = oui;
+  }
+
+  form.querySelectorAll('select.choix-modele').forEach(function (s) {
+    var a = document.getElementById(s.getAttribute('data-autre'));
+    s.addEventListener('change', function () { a.hidden = s.value !== AUTRE; if (!a.hidden) a.focus(); maj(); });
+    a.addEventListener('input', maj);
+  });
+
+  // Modèles de secours : une ligne à la fois.
+  var lignes = Array.prototype.slice.call(form.querySelectorAll('.ligne-secours')), ajouter = document.getElementById('ajouter-secours');
+  function majAjout() { ajouter.hidden = lignes.every(function (l) { return !l.hidden; }); }
+  ajouter.addEventListener('click', function () {
+    var l = lignes.filter(function (x) { return x.hidden; })[0];
+    if (!l) return;
+    l.hidden = false; l.querySelector('select').focus(); majAjout();
+  });
+  lignes.forEach(function (l) {
+    l.querySelector('.retirer-secours').addEventListener('click', function () {
+      var s = l.querySelector('select'), a = document.getElementById(s.getAttribute('data-autre'));
+      s.value = ''; a.value = ''; a.hidden = true; l.hidden = true;
+      l.parentNode.appendChild(l);  // les lignes restantes gardent leur ordre
+      lignes = Array.prototype.slice.call(form.querySelectorAll('.ligne-secours'));
+      lignes.forEach(function (x, i) { renommer(x, i + 1); });
+      majAjout(); maj();
+    });
+  });
+  function renommer(l, i) {
+    var s = l.querySelector('select'), a = l.querySelector('.modele-autre');
+    s.name = s.id = 'secours_' + i; a.name = a.id = 'secours_' + i + '_autre'; s.setAttribute('data-autre', a.id);
+  }
+  majAjout(); maj();
+})();
+</script>{% endblock %}

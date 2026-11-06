@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block titre %}Documents de recette · {{ fiche.nom }} · QA Factory{% endblock %}
+{% block contenu %}
+{% set mc = modeles.cahier.modele %}{% set mm = modeles.manuel.modele %}
+<div class="etroit">
+  <a class="retour" href="/projets/{{ code }}">Retour au projet</a>
+  <h1>Documents de recette</h1>
+  <p class="sous-titre">{{ fiche.nom }} · le cahier de tests et le manuel utilisateur, dans les modèles de votre entreprise s'ils ont été déposés.</p>
+
+  {% if not e.valide %}
+  <div class="message alerte" style="animation:none">Les documents se produisent à partir des cas validés. <a href="/projets/{{ code }}/cas">Relisez et enregistrez les cas</a> d'abord.</div>
+  {% else %}
+
+  <section class="bloc" id="cahier" aria-labelledby="t-cahier">
+    <h2 id="t-cahier">Cahier de tests</h2>
+    <p class="petit">Généré à partir des cas validés, sans IA, en quelques secondes. Colonnes de résultat et de statut laissées vides pour la recette.</p>
+    <p class="petit discret">Modèle : {% if mc %}<strong>{{ mc.nom }}</strong> (modèle de l'entreprise){% else %}modèle interne QA Factory{% endif %}
+      {%- if peut_modeles %} · <a href="/parametres/documents#cahier">{{ 'changer' if mc else "déposer le modèle de l'entreprise" }}</a>{% endif %}</p>
+    {% if e.a_valider %}<div class="message alerte petit" style="animation:none">Une relecture est en cours : le cahier reprend la dernière version validée.</div>{% endif %}
+    <form method="post" action="/projets/{{ code }}/cahier" class="actions-ligne" data-cahier>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="bouton" type="submit">{{ 'Générer à nouveau' if cahiers else 'Générer le cahier de tests' }}</button>
+      {% if nb_nominaux %}<label class="case" style="margin:0"><input type="checkbox" name="nominaux" value="1"> Parcours nominaux uniquement ({{ nb_nominaux }} cas)</label>{% endif %}
+    </form>
+    {% if cahiers %}
+    <ul class="liste-sobre" style="margin-top:1rem" aria-label="Cahiers produits">
+      {% for c in cahiers %}<li><a href="/projets/{{ code }}/telecharger/{{ c.chemin }}">{{ c.nom }}</a><span class="meta">{{ c.date }} · {{ (c.taille / 1024)|round|int }} Ko</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="bloc" id="manuel" aria-labelledby="t-manuel">
+    <h2 id="t-manuel">Manuel utilisateur</h2>
+    <p class="petit">L'assistant parcourt l'application, relève les libellés réels, prend les captures, puis le manuel est mis en page dans le modèle Word.
+      Ce qu'il n'a pas pu observer est listé dans les points à confirmer.</p>
+    <p class="petit discret">Modèle Word : {% if mm %}<strong>{{ mm.nom }}</strong> (modèle de l'entreprise){% else %}modèle interne QA Factory{% endif %}
+      {%- if peut_modeles %} · <a href="/parametres/documents#manuel">{{ 'changer' if mm else "déposer le modèle de l'entreprise" }}</a>{% endif %}
+      · Modèle d'IA : <code>{{ modele_ia or 'aucun' }}</code></p>
+
+    {% if active and active.type == 'manuel' %}
+    <div class="depot travail" id="depot" data-tache="{{ active.id }}" data-type="manuel" style="min-height:220px;margin-top:1rem">
+      <div class="remplissage" aria-hidden="true"></div>
+      <div class="pourcentage" aria-hidden="true">0 %</div>
+      <svg class="coche" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="34"/><path d="M22 37l10 10 19-21"/></svg>
+      <div class="phrase" aria-live="polite">Rédaction du manuel</div>
+      <div class="aide">Vous pouvez quitter cette page : la rédaction continue.</div>
+    </div>
+    <p class="centre"><button class="lien-bouton" type="button" data-action="arreter-tache" data-tache="{{ active.id }}">Arrêter la rédaction</button></p>
+    {% elif not app_.url %}
+    <div class="encadre"><p>Indiquez d'abord le lien de l'application et un compte de test : l'assistant en a besoin pour observer les écrans.</p>
+      <a class="bouton" href="/projets/{{ code }}/application">Renseigner l'application</a></div>
+    {% else %}
+    {% if echec_manuel %}<div class="message erreur" style="animation:none">La dernière rédaction n'a pas abouti : {{ ((echec_manuel.journal or [{}])[-1].m or '')|replace('Échec : ', '') }}</div>{% endif %}
+    {% if active %}<div class="message alerte petit" style="animation:none">Une autre tâche est en cours sur ce projet : la rédaction pourra être lancée à sa fin.</div>{% endif %}
+    <form id="form-manuel" data-projet="{{ code }}">
+      <p class="petit" style="margin:.75rem 0 0"><strong>Fonctionnalités à décrire</strong> · {{ app_.url }} · {{ nb_comptes }} compte{{ 's' if nb_comptes != 1 }} de test
+        · {{ 'lecture seule' if app_.actions == 'lecture-seule' else 'création de données de test autorisée' }}</p>
+      <ul class="fonctions-manuel">
+        {% for f in fonctions %}<li><label class="case"><input type="checkbox" name="fonctionnalite" value="{{ f }}" checked> {{ f }} <small>({{ cas_par_fonction[f] }} cas)</small></label></li>{% endfor %}
+      </ul>
+      <div class="actions-ligne">
+        <button class="bouton" type="submit" {% if active %}disabled{% endif %}>{{ 'Rédiger à nouveau' if redactions else 'Rédiger le manuel' }}</button>
+        <span class="discret petit">Compter 5 à 20 minutes selon le nombre d'écrans.</span>
+      </div>
+      <p class="message erreur petit" data-erreur hidden style="animation:none;margin-top:.75rem"></p>
+    </form>
+    {% endif %}
+
+    {% if redactions %}{% set r = redactions[0] %}
+    <div style="margin-top:1.4rem">
+      <h3 class="petit" style="margin:0 0 .4rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gris)">Dernier manuel</h3>
+      <ul class="liste-sobre">
+        <li><a href="/projets/{{ code }}/telecharger/{{ r.chemin }}">{{ r.fichier }}</a>
+          <span class="meta">{{ r.fin[:16]|replace('T', ' à ') }} · {{ r.chapitres }} chapitre{{ 's' if r.chapitres > 1 }} · {{ r.procedures }} procédure{{ 's' if r.procedures > 1 }} · {{ r.figures }} capture{{ 's' if r.figures > 1 }} · modèle {{ "de l'entreprise" if r.modele == 'entreprise' else 'interne' }}</span></li>
+      </ul>
+      {% if r.couverture %}
+      <div class="defile"><table class="tableau-colonnes" style="margin-top:.9rem">
+        <thead><tr><th>Fonctionnalité</th><th>Cas</th><th>Vérification</th></tr></thead>
+        <tbody>{% for c in r.couverture %}<tr><td>{{ c.fonctionnalite }}</td><td>{{ c.cas|join(', ') }}</td>
+          <td><span class="pastille {{ 'ok' if c.etat == 'verifie' else ('alerte' if c.etat == 'partiel' else 'neutre') }}">{{ {'verifie': 'Vérifiée', 'partiel': 'En partie', 'non_verifie': 'Non vérifiée'}[c.etat] }}</span></td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% endif %}
+      {% if r.points_a_confirmer %}
+      <p class="petit" style="margin:1rem 0 0"><strong>Points à confirmer</strong> (<a href="/projets/{{ code }}/telecharger/{{ r.points }}">fichier</a>)</p>
+      <ul class="points-confirmer petit">{% for p in r.points_a_confirmer[:12] %}<li>{{ p }}</li>{% endfor %}</ul>
+      {% if r.points_a_confirmer|length > 12 %}<p class="discret petit">… et {{ r.points_a_confirmer|length - 12 }} autre{{ 's' if r.points_a_confirmer|length - 12 > 1 }} dans le fichier.</p>{% endif %}
+      {% endif %}
+      {% for w in r.avertissements[:5] %}<div class="message alerte petit" style="animation:none;margin:.5rem 0 0">{{ w }}</div>{% endfor %}
+      {% if not active %}
+      <form method="post" action="/projets/{{ code }}/manuel/{{ r.redaction }}/mise-en-page" class="actions-ligne">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="lien-bouton" type="submit">Remettre en page avec le modèle actuel</button>
+        <span class="discret petit">Sans IA : utile après avoir déposé un nouveau modèle Word.</span>
+      </form>
+      {% endif %}
+      {% if redactions|length > 1 %}
+      <details style="margin-top:1rem"><summary class="petit">Manuels précédents</summary>
+        <ul class="liste-sobre">{% for x in redactions[1:] %}<li><a href="/projets/{{ code }}/telecharger/{{ x.chemin }}">{{ x.fichier }}</a><span class="meta">{{ x.fin[:16]|replace('T', ' à ') }}</span></li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+{% block script %}<script>
+var d = document.getElementById('depot');
+if (d) QAF.suivreTache(d, d.getAttribute('data-tache'), function () { location.href = location.pathname + '#manuel'; location.reload(); });
+QAF.redigerManuel(document.getElementById('form-manuel'));
+document.querySelectorAll('[data-cahier]').forEach(function (f) {
+  f.addEventListener('submit', function () { var b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Génération du cahier…'; });
+});
+document.querySelectorAll('[data-action=arreter-tache]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    b.disabled = true; b.textContent = 'Arrêt en cours…';
+    fetch('/taches/' + b.getAttribute('data-tache') + '/arreter', { method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRF': document.querySelector('meta[name=csrf]').content, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: '{}' });
+  });
+});
+</script>{% endblock %}

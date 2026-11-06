@@ -73,7 +73,7 @@ def dechiffrer(texte: str) -> str:
         return chiffreur().decrypt(texte.encode()).decode()
     except InvalidToken:
         raise ErreurConnexion("Le secret Squash enregistré ne peut plus être lu (clé du serveur changée) : "
-                              "saisissez-le à nouveau dans la page Squash.")
+                              "saisissez-le à nouveau dans Paramètres > Connexion Squash.")
 
 
 # ---------------------------------------------------------------- adresse

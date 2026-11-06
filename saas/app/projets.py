@@ -260,7 +260,7 @@ def fichier_telechargeable(code: str, chemin: str) -> Path:
     f = (d / chemin).resolve()
     if d not in f.parents or not f.is_file() or any(part.startswith(".") for part in f.relative_to(d).parts):
         raise ErreurProjet("Fichier introuvable.")
-    if f.relative_to(d).parts[0] not in ("01-entrant", "02-a-valider", "03-valide", "04-livrables"):
+    if f.relative_to(d).parts[0] not in ("01-entrant", "02-a-valider", "03-valide", "04-livrables", "05-automatisation"):
         raise ErreurProjet("Fichier introuvable.")
     return f
 

@@ -9,23 +9,57 @@
 <link rel="preload" href="/statique/polices/nunito-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/statique/app.css">
 </head>
-<body>
-<header class="entete"><div class="interieur">
-  <a class="marque" href="/"><i aria-hidden="true"></i>QA Factory</a>
-  {% if u %}
-  <nav aria-label="Navigation principale">
-    <a href="/projets" {% if request.url.path.startswith('/projets') %}aria-current="page"{% endif %}>Projets</a>
-    <a href="/parametres/squash" {% if request.url.path.startswith('/parametres') %}aria-current="page"{% endif %}>Squash</a>
-    {% if u.role == 'admin' %}<a href="/admin/utilisateurs" {% if request.url.path.startswith('/admin') %}aria-current="page"{% endif %}>Équipe</a>{% endif %}
-    <a href="/compte" class="discret nom-utilisateur">{{ u.nom }}</a>
-    <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="lien-bouton" type="submit">Déconnexion</button></form>
-  </nav>
-  {% endif %}
-</div></header>
-<main>
-{% for f in flashs or [] %}<div class="message {{ f.g }}" role="status">{{ f.m }}</div>{% endfor %}
-{% block contenu %}{% endblock %}
-</main>
+{% set chemin = request.url.path %}
+{% macro icone(nom) -%}
+<svg class="icone-menu" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+{%- if nom == 'analyse' -%}<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="M9 14l3-3 3 3"/>
+{%- elif nom == 'projets' -%}<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+{%- elif nom == 'activite' -%}<path d="M3 12h4l3-8 4 16 3-8h4"/>
+{%- elif nom == 'parametres' -%}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+<body class="{{ 'avec-menu' if u else 'sans-menu' }}">
+{% if u %}
+<div class="cadre">
+  <aside class="menu-lateral" id="menu-lateral" aria-label="Menu">
+    <a class="marque" href="/"><i aria-hidden="true"></i>QA Factory</a>
+    <nav class="menu-principal" aria-label="Navigation principale">
+      <ul>
+        <li><a class="entree" href="/" {% if chemin == '/' %}aria-current="page"{% endif %}>{{ icone('analyse') }}<span>Nouvelle analyse</span></a></li>
+        <li><a class="entree" href="/projets" {% if chemin.startswith('/projets') %}aria-current="page"{% endif %}>{{ icone('projets') }}<span>Projets</span></a></li>
+        <li><a class="entree" href="/activite" {% if chemin.startswith('/activite') %}aria-current="page"{% endif %}>{{ icone('activite') }}<span>Activité</span></a></li>
+      </ul>
+    </nav>
+    <div class="menu-bas">
+      <nav class="menu-parametres" aria-label="Paramètres">
+        <a class="entree" href="/parametres" {% if chemin.startswith('/parametres') or chemin.startswith('/admin') or chemin.startswith('/compte') %}aria-current="page"{% endif %}>{{ icone('parametres') }}<span>Paramètres</span></a>
+      </nav>
+      <div class="utilisateur">
+        <a href="/compte" class="nom-utilisateur" title="Mon compte"><span class="initiale" aria-hidden="true">{{ (u.nom or '?')[:1]|upper }}</span><span class="qui"><strong>{{ u.nom }}</strong><small>{{ ROLES.get(u.role, u.role) }}</small></span></a>
+        <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="lien-bouton" type="submit">Déconnexion</button></form>
+      </div>
+    </div>
+  </aside>
+  <div class="voile-menu" data-action="fermer-menu" hidden></div>
+  <div class="principal">
+    <header class="barre-mobile">
+      <button type="button" class="bouton-menu" aria-controls="menu-lateral" aria-expanded="false" aria-label="Ouvrir le menu">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <a class="marque" href="/"><i aria-hidden="true"></i>QA Factory</a>
+    </header>
+{% else %}
+<header class="entete"><div class="interieur"><a class="marque" href="/"><i aria-hidden="true"></i>QA Factory</a></div></header>
+{% endif %}
+    <main>
+    {% for f in flashs or [] %}<div class="message {{ f.g }}" role="status">{{ f.m }}</div>{% endfor %}
+    {% block contenu %}{% endblock %}
+    </main>
+{% if u %}
+  </div>
+</div>
+{% endif %}
 <script src="/statique/app.js"></script>
 {% block script %}{% endblock %}
 </body>
