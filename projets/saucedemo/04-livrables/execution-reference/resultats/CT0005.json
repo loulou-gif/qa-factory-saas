@@ -1,0 +1,21 @@
+{
+  "id": "CT0005",
+  "statut": "reussi",
+  "commentaire": "Conforme au résultat attendu.",
+  "etapes": [
+    {
+      "numero": 1,
+      "statut": "reussi",
+      "observe": "Conforme."
+    },
+    {
+      "numero": 2,
+      "statut": "reussi",
+      "observe": "Conforme."
+    }
+  ],
+  "anomalie": null,
+  "preuves": [],
+  "proposition": null,
+  "duree_s": 34
+}

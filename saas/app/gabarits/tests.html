@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block titre %}Résultats des tests · {{ fiche.nom }}{% endblock %}
+{% macro pluriel(n, mot) %}{{ n }} {{ mot }}{{ 's' if n > 1 }}{% endmacro %}
+{% block contenu %}
+{% set c = st.cas %}{% set ex = st.exigences %}{% set camp = s.campagne %}
+<div class="etroit large-resultats">
+  <a class="retour" href="/projets/{{ code }}">Retour au projet</a>
+  <h1>Résultats des tests</h1>
+  <p class="sous-titre">{{ camp.debut[:16]|replace('T', ' à ') }} · {{ camp.url }}{% if camp.par %} · lancés par {{ camp.par }}{% endif %}</p>
+
+  <div class="chiffres">
+    <div class="chiffre"><b>{{ c.executes }}/{{ c.total }}</b><span>cas exécutés</span></div>
+    <div class="chiffre"><b>{{ c.taux_reussite if c.taux_reussite is not none else '—' }}{% if c.taux_reussite is not none %} %{% endif %}</b><span>de réussite</span></div>
+    <div class="chiffre {{ 'alerte' if st.anomalies }}"><b>{{ st.anomalies|length }}</b><span>anomalie{{ 's' if st.anomalies|length > 1 }}</span></div>
+    <div class="chiffre"><b>{{ ex.couverture }} %</b><span>des exigences vérifiées</span></div>
+  </div>
+  <div class="repartition" role="img" aria-label="{{ c.reussi }} réussis, {{ c.echoue }} échoués, {{ c.bloque }} bloqués, {{ c.non_execute }} non exécutés">
+    {% for k in ('reussi', 'echoue', 'bloque', 'non_execute') %}{% if c[k] %}<span class="seg {{ k }}" style="flex:{{ c[k] }}"></span>{% endif %}{% endfor %}
+  </div>
+  <p class="legende">{{ pluriel(c.reussi, 'réussi') }} · {{ pluriel(c.echoue, 'échoué') }} · {{ pluriel(c.bloque, 'bloqué') }} · {{ c.non_execute }} non exécuté{{ 's' if c.non_execute > 1 }}
+    · {{ ex.validee }} exigence{{ 's' if ex.validee > 1 }} validée{{ 's' if ex.validee > 1 }} sur {{ ex.total }}</p>
+
+  {% if a_decider %}
+  <div class="encadre a-decider">
+    <div><strong>{{ mods|length }} cas à corriger d'après ce que l'assistant a observé</strong>
+      <p class="discret petit">Libellés réels, étapes manquantes. Rien n'est changé sans votre accord.</p></div>
+    <a class="bouton" href="/projets/{{ code }}/tests/modifications?campagne={{ camp.id }}">Voir les modifications</a>
+  </div>
+  {% elif mods %}
+  <p class="discret petit">Modifications proposées traitées : {{ mods|selectattr('decision', 'equalto', 'acceptee')|list|length }} acceptée(s), {{ mods|selectattr('decision', 'equalto', 'refusee')|list|length }} refusée(s).</p>
+  {% endif %}
+
+  <h2>Anomalies</h2>
+  {% for a in st.anomalies %}
+  <article class="anomalie">
+    <div class="anomalie-tete"><span class="gravite {{ a.gravite }}">{{ gravites[a.gravite] }}</span><span class="id">{{ a.cas }}</span><strong>{{ a.titre }}</strong></div>
+    <p class="discret petit">{{ a.titre_cas }}</p>
+    {% if a.attendu or a.obtenu %}<dl class="attendu-obtenu"><dt>Attendu</dt><dd>{{ a.attendu }}</dd><dt>Obtenu</dt><dd>{{ a.obtenu }}</dd></dl>{% endif %}
+    {% if a.description %}<p>{{ a.description }}</p>{% endif %}
+    {% for p in a.preuves[:2] %}<a class="preuve" href="/projets/{{ code }}/telecharger/{{ chemin }}/{{ p }}" target="_blank" rel="noopener"><img src="/projets/{{ code }}/telecharger/{{ chemin }}/{{ p }}" alt="Capture de l'anomalie {{ a.cas }}" loading="lazy"></a>{% endfor %}
+  </article>
+  {% else %}
+  <p class="vide">Aucune anomalie constatée.</p>
+  {% endfor %}
+
+  {% set a_voir = st.detail_exigences|rejectattr('etat', 'equalto', 'validee')|list %}
+  {% if a_voir %}
+  <h2>Exigences à surveiller</h2>
+  <ul class="exigences-a-voir">
+    {% for x in a_voir %}
+    <li><span class="etat {{ x.etat }}">{{ etats_exigence[x.etat] }}</span><span class="id">{{ x.id }}</span><span>{{ x.titre }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <p class="telechargements">Télécharger le rapport :
+    <a href="/projets/{{ code }}/telecharger/{{ chemin }}/rapport.html">page web</a> ·
+    <a href="/projets/{{ code }}/telecharger/{{ chemin }}/rapport.xlsx">Excel</a>
+  </p>
+
+  <details class="detail-cas">
+    <summary>Détail des {{ c.total }} cas</summary>
+    <table class="tableau">
+      <thead><tr><th>Cas</th><th>Titre</th><th>Résultat</th></tr></thead>
+      <tbody>
+      {% for r in s.resultats %}
+      <tr><td class="id">{{ r.id }}</td><td>{{ (titres.get(r.id) or {}).get('titre', '') }}{% if r.commentaire and r.statut != 'reussi' %}<br><span class="discret petit">{{ r.commentaire }}</span>{% endif %}</td>
+        <td><span class="etat {{ r.statut }}">{{ statuts[r.statut] }}</span></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+
+  {% if campagnes|length > 1 %}
+  <p class="discret petit campagnes-precedentes">Autres campagnes :
+    {% for k in campagnes %}{% if k != camp.id %}<a href="/projets/{{ code }}/tests?campagne={{ k }}">{{ k[6:8] }}/{{ k[4:6] }} {{ k[9:11] }}:{{ k[11:13] }}</a>{{ ' · ' if not loop.last }}{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

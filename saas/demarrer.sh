@@ -11,6 +11,8 @@ case "$1" in
     # L'agent n'a pas accès à Squash : on retire ses variables. OpenCode les insère telles quelles dans
     # opencode.json avant de le lire ; un mot de passe contenant " ou \ rendrait le fichier illisible.
     unset SQUASH_TM_API_TOKEN SQUASH_TM_USERNAME SQUASH_TM_PASSWORD SQUASH_TM_BASE_URL SQUASH_MCP_INDEX
+    # Ni les secrets de l'application (sessions, comptes, chiffrement des connexions Squash).
+    unset QAF_SECRET QAF_CLE_SECRETS QAF_ADMIN_MOT_DE_PASSE
     if [ "${QAF_MODELE#simulation/}" != "$QAF_MODELE" ]; then
       export QAF_FAUX_MODELE_URL="${QAF_FAUX_MODELE_URL:-http://127.0.0.1:4010/v1}"
       python3 saas/dev/faux_modele.py 4010 &

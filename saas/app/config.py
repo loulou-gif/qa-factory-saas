@@ -24,7 +24,9 @@ class Reglages:
     opencode_mot_de_passe: str = field(default_factory=lambda: os.environ.get("OPENCODE_SERVER_PASSWORD", ""))
     modele: str = field(default_factory=lambda: os.environ.get("QAF_MODELE", ""))
     squash_mcp_dir: str = field(default_factory=lambda: os.environ.get("SQUASH_MCP_DIR", ""))
-    squash_url: str = field(default_factory=lambda: os.environ.get("SQUASH_TM_BASE_URL", ""))
+    # Chaque utilisateur règle sa connexion Squash dans l'application (app/connexions.py).
+    # true : autorise les adresses Squash d'un réseau interne (installation en entreprise, essais).
+    squash_reseau_prive: bool = field(default_factory=lambda: _bool("QAF_SQUASH_RESEAU_PRIVE", False))
     taches_paralleles: int = field(default_factory=lambda: int(os.environ.get("QAF_TACHES_PARALLELES", "2")))
     duree_max_tache_min: int = field(default_factory=lambda: int(os.environ.get("QAF_DUREE_MAX_TACHE_MIN", "90")))
     taille_max_mo: int = field(default_factory=lambda: int(os.environ.get("QAF_TAILLE_MAX_MO", "50")))

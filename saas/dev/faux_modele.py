@@ -11,6 +11,8 @@ Scénario pour /analyser <projet> :
      confirmation, ce qui exerce le circuit de confirmation de l'application web) ;
   2. demande l'outil bash : régénère les vues et lance le contrôle ;
   3. rend un compte rendu.
+Scénario pour /tester <projet> campagne <id> : copie les résultats d'exécution de référence de
+projets/saucedemo/04-livrables/execution-reference dans la campagne, puis rend un compte rendu.
 Pour toute autre demande : répond un texte court.
 
 Lancement : python saas/dev/faux_modele.py [port]   (défaut 4010)
@@ -37,6 +39,15 @@ def decider(corps):
     utilisateur = " ".join(_texte(m.get("content")) for m in messages if m.get("role") == "user")
     resultats = [m for m in messages if m.get("role") == "tool"]
     m = re.search(r"projet\s+«\s*([a-z0-9][a-z0-9-]*)", utilisateur)
+    campagne = re.search(r"projet\s+«\s*([a-z0-9][a-z0-9-]*)\s+campagne\s+(\d{8}-\d{6})", utilisateur)
+    if "bash" in outils and campagne and "Exécute les cas" in utilisateur:
+        projet, ident = campagne.groups()
+        ref, dst = "projets/saucedemo/04-livrables/execution-reference", f"projets/{projet}/04-livrables/execution/{ident}"
+        if not resultats:
+            return ("outil", "bash", {"command": f"cp -r {ref}/resultats/. {dst}/resultats/ && cp -r {ref}/captures/. {dst}/captures/",
+                                      "description": "Résultats d'exécution de référence (faux modèle)"})
+        return ("texte", "Exécution terminée (faux modèle de démonstration) : 26 cas réussis, 1 échoué (CT0027, anomalie "
+                         "majeure : commande possible avec un panier vide), 0 bloqué. 2 corrections de cas proposées.")
     if "bash" not in outils or not m or "analyse" not in utilisateur.lower():
         return ("texte", "Réponse du faux modèle de démonstration.")
     projet = m.group(1)

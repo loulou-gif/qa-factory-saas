@@ -22,10 +22,11 @@ Même dépôt, mêmes règles, mêmes skills, mêmes commandes que sous Claude C
 3. **Créer un jeton Squash personnel** : Squash → Mon compte → Jetons d'API, droits lecture et écriture. Un jeton par testeur : les créations dans Squash portent ainsi le nom de leur auteur.
 4. **Définir les variables d'environnement** (PowerShell, une fois, puis rouvrir le terminal) :
    ```powershell
-   setx SQUASH_MCP_INDEX "C:\chemin\vers\squash-tm-mcp\dist\index.js"
+   setx SQUASH_MCP_INDEX "C:/chemin/vers/squash-tm-mcp/dist/index.js"
    setx SQUASH_TM_BASE_URL "https://squash.smile.ci/squash/api/rest/latest"
    setx SQUASH_TM_API_TOKEN "<ton jeton>"
    ```
+   Le chemin s'écrit avec des barres obliques `/` : OpenCode insère la variable telle quelle dans `opencode.json`, et des `\` rendent ce fichier invalide (erreur `ConfigJsonError`, toutes les requêtes répondent 400).
    Le jeton n'est jamais écrit dans un fichier du dépôt : `opencode.json` le lit avec `{env:SQUASH_TM_API_TOKEN}`.
    Si Squash refuse de créer le jeton avec le message « Aucun secret JWT n'est défini pour cette instance », l'administrateur Squash n'a pas activé les jetons d'API. En attendant, utiliser son identifiant et son mot de passe Squash à la place du jeton (le MCP passe alors en authentification Basic) :
    ```powershell

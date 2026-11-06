@@ -72,8 +72,38 @@ class Moteur:
 
     # ---------------------------------------------------------------- exécution
 
-    def executer(self, base, tid, commande, arguments):
-        """Lance la commande dans une nouvelle session et suit son déroulement jusqu'à la fin."""
+    # ---------------------------------------------------------------- navigateur d'une tâche
+
+    def ajouter_navigateur(self, nom: str, configuration: dict):
+        """Ajoute au moteur, pour une tâche, un serveur MCP (navigateur Playwright) et le démarre."""
+        r = self.client.post("/mcp", json={"name": nom, "config": configuration}, timeout=120)
+        if r.status_code >= 400:
+            raise ErreurMoteur(f"Le navigateur de test n'a pas pu démarrer (HTTP {r.status_code}) : {r.text[:300]}")
+        etat = (r.json() or {}).get(nom) or {}
+        if etat.get("status") == "failed":
+            raise ErreurMoteur(f"Le navigateur de test n'a pas pu démarrer : {etat.get('error') or 'erreur inconnue'}")
+
+    def retirer_navigateur(self, nom: str):
+        try:
+            self.client.post(f"/mcp/{nom}/disconnect", timeout=30)
+        except Exception:  # noqa: BLE001
+            pass
+
+    @staticmethod
+    def texte_commande(commande: str, arguments: str) -> str:
+        """Texte d'une commande du dépôt (.opencode/commands/<commande>.md), comme OpenCode le construit."""
+        import re
+        f = reglages.racine / ".opencode" / "commands" / f"{commande}.md"
+        if not f.exists():
+            raise ErreurMoteur(f"Commande /{commande} introuvable dans le dépôt.")
+        corps = re.sub(r"^---\n.*?\n---\n", "", f.read_text(encoding="utf-8"), count=1, flags=re.S)
+        return corps.replace("$ARGUMENTS", arguments).strip()
+
+    def executer(self, base, tid, commande, arguments, outils=None):
+        """Lance la commande dans une nouvelle session et suit son déroulement jusqu'à la fin.
+
+        outils : si fourni, la commande est envoyée comme message avec ces outils activés ou coupés
+        (ex. seul le navigateur de la tâche) ; sinon par l'API des commandes d'OpenCode."""
         if not reglages.modele:
             raise ErreurMoteur("Aucun modèle configuré (variable QAF_MODELE).")
         s = self.client.post("/session", json={"title": f"{commande} {arguments}"[:80] + f" — tâche {tid}"})
@@ -84,11 +114,17 @@ class Moteur:
 
         retour = {}
 
+        if outils is None:
+            chemin, corps = f"/session/{sid}/command", {"command": commande, "arguments": arguments, "model": reglages.modele}
+        else:
+            fournisseur, _, modele = reglages.modele.partition("/")
+            chemin, corps = f"/session/{sid}/message", {
+                "parts": [{"type": "text", "text": self.texte_commande(commande, arguments)}],
+                "model": {"providerID": fournisseur, "modelID": modele}, "tools": outils}
+
         def lancer():
             try:
-                r = self.client.post(f"/session/{sid}/command",
-                                     json={"command": commande, "arguments": arguments, "model": reglages.modele},
-                                     timeout=reglages.duree_max_tache_min * 60)
+                r = self.client.post(chemin, json=corps, timeout=reglages.duree_max_tache_min * 60)
                 retour["r"] = r
             except Exception as e:  # noqa: BLE001
                 retour["e"] = e

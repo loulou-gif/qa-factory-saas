@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Base de données SQLite : utilisateurs, projets (responsable), tâches, journal d'audit.
+"""Base de données SQLite : utilisateurs, connexions Squash et comptes de test de l'application (chiffrés), projets, tâches, journal d'audit.
 
 Le contenu des projets (documents, analyses, livrables) reste dans les dossiers projets/<code>/,
 exactement comme dans qa-factory : les skills et les scripts fonctionnent sans changement.
@@ -43,6 +43,26 @@ CREATE TABLE IF NOT EXISTS taches (
   fin TEXT
 );
 CREATE INDEX IF NOT EXISTS taches_projet ON taches(projet, id);
+CREATE TABLE IF NOT EXISTS connexions_squash (
+  utilisateur_id INTEGER PRIMARY KEY REFERENCES utilisateurs(id),
+  url TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('compte', 'jeton')),
+  identifiant TEXT,
+  secret TEXT NOT NULL,
+  verifiee_le TEXT,
+  projets_visibles INTEGER,
+  maj_le TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS comptes_test (
+  id INTEGER PRIMARY KEY,
+  projet TEXT NOT NULL,
+  libelle TEXT NOT NULL,
+  identifiant TEXT NOT NULL,
+  secret TEXT NOT NULL,
+  cree_par INTEGER REFERENCES utilisateurs(id),
+  maj_le TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comptes_test_projet ON comptes_test(projet, id);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY,
   quand TEXT NOT NULL,

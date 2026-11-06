@@ -1,0 +1,33 @@
+{
+  "id": "CT0002",
+  "statut": "reussi",
+  "commentaire": "Message affiché : « Epic sadface: Username is required ».",
+  "etapes": [
+    {
+      "numero": 1,
+      "statut": "reussi",
+      "observe": "Conforme."
+    },
+    {
+      "numero": 2,
+      "statut": "reussi",
+      "observe": "Conforme."
+    }
+  ],
+  "anomalie": null,
+  "preuves": [],
+  "proposition": {
+    "raison": "Libellé réel du message d'erreur observé sur l'application.",
+    "etapes": [
+      {
+        "action": "Laisser le champ nom d'utilisateur vide et renseigner le mot de passe",
+        "resultat_attendu": "Seul le champ mot de passe est rempli."
+      },
+      {
+        "action": "Cliquer sur le bouton de connexion",
+        "resultat_attendu": "La connexion est refusée et le message « Epic sadface: Username is required » s'affiche au-dessus du bouton Login."
+      }
+    ]
+  },
+  "duree_s": 34
+}

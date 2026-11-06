@@ -84,7 +84,7 @@ Même dépôt pour Claude Code et OpenCode ; détails OpenCode dans `docs/OPENCO
 2. **Le MCP Squash** : récupérer `squash-tm-mcp`, puis dans son dossier `npm install` et `npm run build`.
 3. **Variables d'environnement** (lues par `.mcp.json` pour Claude Code et `opencode.json` pour OpenCode ; aucun identifiant n'est écrit dans le dépôt) :
    ```bash
-   setx SQUASH_MCP_INDEX "C:\chemin\vers\squash-tm-mcp\dist\index.js"
+   setx SQUASH_MCP_INDEX "C:/chemin/vers/squash-tm-mcp/dist/index.js"   # avec des /, sinon opencode.json devient invalide
    setx SQUASH_TM_BASE_URL "https://squash.smile.ci/squash/api/rest/latest"
    ```
    Puis l'authentification Squash, au choix :

@@ -14,6 +14,7 @@
   {% if u %}
   <nav aria-label="Navigation principale">
     <a href="/projets" {% if request.url.path.startswith('/projets') %}aria-current="page"{% endif %}>Projets</a>
+    <a href="/parametres/squash" {% if request.url.path.startswith('/parametres') %}aria-current="page"{% endif %}>Squash</a>
     {% if u.role == 'admin' %}<a href="/admin/utilisateurs" {% if request.url.path.startswith('/admin') %}aria-current="page"{% endif %}>Équipe</a>{% endif %}
     <a href="/compte" class="discret nom-utilisateur">{{ u.nom }}</a>
     <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="lien-bouton" type="submit">Déconnexion</button></form>

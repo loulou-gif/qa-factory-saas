@@ -5,11 +5,9 @@ Une seule tâche active par projet (pas d'écritures concurrentes dans un même 
 un nombre limité de tâches en parallèle sur le serveur (QAF_TACHES_PARALLELES).
 """
 import json
-import os
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from . import projets
+from . import campagnes, connexions, projets
 from .config import reglages
 from .db import STATUTS_ACTIFS, maintenant
 from .moteur import ErreurMoteur, moteur
@@ -20,6 +18,7 @@ TYPES = {
     "publier-simulation": "Simulation de publication Squash",
     "publier": "Publication dans Squash",
     "specs": "Specs d'automatisation",
+    "tester": "Tests de l'application",
 }
 STATUTS = {
     "en_attente": "En attente", "en_cours": "En cours", "attente_confirmation": "Confirmation demandée",
@@ -31,18 +30,7 @@ class ErreurTache(Exception):
     pass
 
 
-def expliquer_erreur_squash(erreurs):
-    """Traduit les erreurs techniques du module Squash en consignes compréhensibles."""
-    texte = " ; ".join(str(e) for e in erreurs[:5])
-    bas = texte.lower()
-    if "fetch failed" in bas or "econnrefused" in bas or "enotfound" in bas or "timeout" in bas:
-        return (f"Squash injoignable depuis le serveur ({reglages.squash_url or 'adresse non définie'}). "
-                f"Vérifier l'adresse SQUASH_TM_BASE_URL et l'accès réseau du serveur à Squash. Détail : {texte}")
-    if "401" in bas or "unauthorized" in bas:
-        return f"Squash refuse les identifiants du serveur (SQUASH_TM_USERNAME / SQUASH_TM_PASSWORD ou jeton). Détail : {texte}"
-    if "404" in bas and "projet" in bas:
-        return f"Projet Squash introuvable : vérifier l'ID du projet dans la fiche et les droits du compte. Détail : {texte}"
-    return texte
+expliquer_erreur_squash = connexions.expliquer
 
 
 class Gestionnaire:
@@ -96,12 +84,12 @@ class Gestionnaire:
         self.base.maj_tache(tid, statut="en_cours", debut=maintenant())
         try:
             fonction = {"analyser": self._ia, "corriger": self._ia, "publier-simulation": self._publier,
-                        "publier": self._publier, "specs": self._specs}[t["type"]]
+                        "publier": self._publier, "specs": self._specs, "tester": self._tester}[t["type"]]
             fonction(t)
             t = self.base.tache(tid)
             self.base.maj_tache(tid, statut="annule" if t["annulation"] else "termine", fin=maintenant(), attente=None)
-            self.base.ajouter_journal(tid, "Arrêtée." if t["annulation"] else "Terminée.")
-        except (ErreurMoteur, ErreurTache, projets.ErreurProjet) as e:
+            self.base.ajouter_journal(tid, ((t["resultat"] or {}).get("message_arret") or "Arrêtée.") if t["annulation"] else "Terminée.")
+        except (ErreurMoteur, ErreurTache, projets.ErreurProjet, connexions.ErreurConnexion, campagnes.ErreurCampagne) as e:
             self.base.maj_tache(tid, statut="echec", fin=maintenant(), attente=None)
             self.base.ajouter_journal(tid, f"Échec : {e}")
         except Exception as e:  # noqa: BLE001
@@ -152,33 +140,45 @@ class Gestionnaire:
         if appliquer and t["parametres"].get("empreinte") != emp:
             raise ErreurTache("Les cas, les réponses aux questions ou les jeux de données ont changé depuis la vérification : "
                               "recommencez l'envoi.")
-        if not reglages.squash_mcp_dir or not reglages.squash_url:
-            raise ErreurTache("Squash n'est pas configuré sur le serveur (SQUASH_MCP_DIR, SQUASH_TM_BASE_URL).")
+        # La connexion Squash est celle de la personne qui a lancé la tâche ; elle doit viser
+        # la même instance que la vérification préalable.
+        cx = connexions.lire(self.base, t["cree_par"])
+        if not cx:
+            raise ErreurTache("Aucune connexion à Squash : réglez-la dans la page Squash, puis recommencez.")
+        instance = t["parametres"].get("instance")
+        if instance and instance != cx["url"]:
+            raise ErreurTache("La connexion Squash a changé depuis la vérification : recommencez l'envoi.")
+        adresse = connexions.adresse_affichee(cx["url"])
         corr = d / "04-livrables" / "squash" / "correspondance.json"
         corr.parent.mkdir(parents=True, exist_ok=True)
-        cmd = ["node", str(reglages.racine / "saas" / "publier_squash.mjs"), "--fichier", str(fjson),
-               "--correspondance", str(corr), "--jeux", str(prep["jeux"])]
-        if appliquer:
-            cmd.append("--appliquer")
+        arguments = ["--fichier", fjson, "--correspondance", corr, "--jeux", prep["jeux"]] + (["--appliquer"] if appliquer else [])
         if prep["exclus"]:
             self.base.ajouter_journal(t["id"], f"{len(prep['exclus'])} cas en attente d'une réponse bloquante, non envoyés : "
                                                + ", ".join(sorted(prep["exclus"])))
-        self.base.ajouter_journal(t["id"], "Publication réelle en cours (environ 15 s par élément)..." if appliquer
-                                  else "Simulation : lecture de Squash, rien n'est créé.")
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           timeout=6 * 3600, env=dict(os.environ, SQUASH_MCP_DIR=reglages.squash_mcp_dir))
-        try:
-            res = json.loads(r.stdout)
-        except json.JSONDecodeError:
-            raise ErreurTache(f"Réponse illisible du module Squash : {(r.stderr or r.stdout)[:400]}")
+        self.base.ajouter_journal(t["id"], (f"Publication réelle vers {adresse} en cours (environ 15 s par élément)..." if appliquer
+                                            else f"Simulation : lecture de {adresse}, rien n'est créé."))
+        res = connexions.appeler_module(cx, *arguments, timeout=6 * 3600,
+                                        arret=lambda: bool(self.base.tache(t["id"])["annulation"]),
+                                        delai_arret=120 if appliquer else 0)
         res["exclus"] = prep["exclus"]
+        res["instance"] = cx["url"]
         plan = res.get("plan") or []
         resume = {a: sum(1 for x in plan if x.get("action") == a) for a in ("creer", "existe", "recreer")}
         res["resume"] = resume
         res["empreinte"] = emp
         self.base.maj_tache(t["id"], resultat=res)
         if res.get("erreurs"):
-            raise ErreurTache(expliquer_erreur_squash(res["erreurs"]))
+            raise ErreurTache(connexions.expliquer(res["erreurs"], adresse, cx["mode"]))
+        if res.get("arrete"):
+            n = len(res.get("crees") or [])
+            if appliquer and n:
+                projets.journaliser(code, "publier", f"{n} élément(s) créé(s) dans Squash avant l'arrêt, tâche {t['id']}",
+                                    ["04-livrables/squash/correspondance.json"])
+            self.base.maj_tache(t["id"], resultat={**res, "message_arret": (
+                "Envoi arrêté de force : vérifiez dans Squash les derniers éléments créés avant de relancer." if res.get("force") else
+                f"Envoi arrêté : {n} élément(s) créé(s) avant l'arrêt. Relancer l'envoi reprend la suite, sans doublon."
+                if appliquer else "Vérification arrêtée.")})
+            return
         if appliquer:
             n = len(res.get("crees") or [])
             j = res.get("jeux") or {}
@@ -190,6 +190,55 @@ class Gestionnaire:
         else:
             self.base.ajouter_journal(t["id"], f"Plan : {resume['creer']} à créer, {resume['existe']} déjà présent(s), "
                                                f"{resume['recreer']} à recréer.")
+
+    def _tester(self, t):
+        """Exécution des cas validés sur l'application par l'agent, dans un navigateur propre à la tâche."""
+        import execution as outil
+        code, tid = t["projet"], t["id"]
+        d = projets.dossier(code)
+        if not (d / "03-valide" / "cas-de-tests.json").exists():
+            raise ErreurTache("Les cas doivent être validés avant d'être exécutés.")
+        if (d / "02-a-valider" / "cas-de-tests.json").exists():
+            raise ErreurTache("Des cas sont en relecture : terminez la relecture avant de lancer les tests.")
+        app = campagnes.application(code)
+        if not app["url"]:
+            raise ErreurTache("Indiquez d'abord le lien de l'application (page Application testée).")
+        for adresse in [app["url"], *app["autres_domaines"]]:
+            campagnes.verifier_reseau(adresse)
+        libelles, valeurs = campagnes.secrets(self.base, code)
+        nom = campagnes.nom_navigateur(tid)
+        try:
+            c = outil.preparer(code, app["url"], libelles, app["actions"], modele=reglages.modele,
+                               par=t.get("auteur") or "", navigateur=nom)
+        except outil.ErreurExecution as e:
+            raise ErreurTache(str(e))
+        self.base.maj_tache(tid, parametres={**(t["parametres"] or {}), "campagne": c.name})
+        self.base.ajouter_journal(tid, f"Campagne {c.name} : {len(json.loads((c / 'campagne.json').read_text(encoding='utf-8'))['cas'])} cas "
+                                       f"sur {app['url']}, {len(libelles)} compte(s) de test, {campagnes.ACTIONS[app['actions']].lower()}.")
+        simulation = reglages.modele.startswith("simulation/")
+        try:
+            if not simulation:  # le faux modèle de démonstration n'utilise pas de navigateur
+                moteur.ajouter_navigateur(nom, campagnes.configuration_navigateur(tid, app, valeurs, c))
+                self.base.ajouter_journal(tid, "Navigateur de test démarré (limité aux domaines de l'application).")
+            bilan = moteur.executer(self.base, tid, "tester", f"{code} campagne {c.name}", outils=campagnes.outils_autorises(tid))
+        finally:
+            if not simulation:
+                moteur.retirer_navigateur(nom)
+        if not any((c / "resultats").glob("*.json")) and not self.base.tache(tid)["annulation"]:
+            dit = " ".join((bilan.get("compte_rendu") or "").split())[:400]
+            raise ErreurTache("L'assistant s'est arrêté sans enregistrer de résultat." + (f" Son dernier message : « {dit} »" if dit else "")
+                              + " Vérifiez le lien et les comptes de test, puis relancez ; un modèle plus puissant est recommandé.")
+        try:
+            synthese = outil.consolider(code, c.name)
+        except outil.ErreurExecution as e:
+            raise ErreurTache(str(e))
+        s = synthese["statistiques"]["cas"]
+        r = self.base.tache(tid)["resultat"] or {}
+        r.update(campagne=c.name, statistiques=s, modifications=synthese["modifications"])
+        self.base.maj_tache(tid, resultat=r)
+        self.base.ajouter_journal(tid, f"Résultats : {s['reussi']} réussi(s), {s['echoue']} échoué(s), {s['bloque']} bloqué(s), "
+                                       f"{s['non_execute']} non exécuté(s) ; {synthese['modifications']} correction(s) de cas proposée(s). "
+                                       f"Coût : {bilan.get('cout_usd', 0)} USD.")
 
     def _specs(self, t):
         code = t["projet"]
@@ -233,7 +282,7 @@ def progression(t) -> dict:
     statut = t["statut"]
     if statut == "termine":
         return {"pourcentage": 100, "message": "Génération terminée" if t["type"] in ("analyser", "corriger")
-                else ("Envoyé dans Squash" if t["type"] == "publier" else "Terminé")}
+                else ("Envoyé dans Squash" if t["type"] == "publier" else ("Tests terminés" if t["type"] == "tester" else "Terminé"))}
     if statut in ("echec", "annule", "interrompue"):
         dernier = (t["journal"] or [{}])[-1].get("m", "")
         return {"pourcentage": 0, "message": dernier.replace("Échec : ", "")}
@@ -262,6 +311,19 @@ def progression(t) -> dict:
         if minutes:
             message += f" · {minutes} min"
         return {"pourcentage": round(p, 1), "message": message}
+    if t["type"] == "tester":
+        fait, total = 0, 0
+        try:
+            c = projets.dossier(t["projet"]) / "04-livrables" / "execution" / str((t["parametres"] or {}).get("campagne") or "_")
+            total = len(_json.loads((c / "campagne.json").read_text(encoding="utf-8"))["cas"])
+            fait = len(list((c / "resultats").glob("*.json")))
+        except Exception:  # noqa: BLE001
+            pass
+        if not total:
+            return {"pourcentage": 3, "message": "Préparation du navigateur de test"}
+        minutes = int(ecoule // 60)
+        return {"pourcentage": round(min(97, 3 + 94 * fait / total), 1),
+                "message": f"Cas exécutés : {fait} sur {total}" + (f" · {minutes} min" if minutes else "")}
     if t["type"] == "publier":
         total = int((t["parametres"] or {}).get("a_creer") or 0)
         fait = 0

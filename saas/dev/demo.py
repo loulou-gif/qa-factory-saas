@@ -20,8 +20,8 @@ Fonctionne sous Windows, macOS et Linux.
 Connexion : identifiant « demo », mot de passe « Demo-2026-qa » (à changer à la première connexion).
 Les projets créés vont dans projets/ (ignoré par Git). Ctrl+C pour tout arrêter.
 
-Squash : pour essayer l'envoi, définir avant le lancement SQUASH_MCP_DIR (dossier du MCP squash-tm
-compilé), SQUASH_TM_BASE_URL et les identifiants, et utiliser un projet Squash d'essai.
+Squash : la connexion (adresse, compte) se règle dans l'application, page « Squash ». Le MCP squash-tm
+compilé est cherché à côté du dépôt (../squash-tm-mcp) ou dans SQUASH_MCP_DIR. Utiliser un projet d'essai.
 """
 import argparse
 import json
@@ -146,7 +146,8 @@ def main():
     for cle in ("NO_PROXY", "no_proxy"):
         env[cle] = ",".join(x for x in (env.get(cle, ""), locaux) if x)
     env.setdefault("SQUASH_MCP_DIR", str(RACINE.parent / "squash-tm-mcp"))
-    env.setdefault("SQUASH_TM_BASE_URL", "")
+    # Démonstration sur un poste : un Squash du réseau local est accepté.
+    env.setdefault("QAF_SQUASH_RESEAU_PRIVE", "true")
     procs = []
     try:
         if modele == "simulation/demo":

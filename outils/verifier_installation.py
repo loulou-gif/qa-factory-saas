@@ -51,9 +51,13 @@ def main():
     print("\nVariables d'environnement (lues par .mcp.json et opencode.json)")
     index = os.environ.get("SQUASH_MCP_INDEX", "")
     if not index:
-        ligne(KO, "SQUASH_MCP_INDEX", "chemin de squash-tm-mcp\\dist\\index.js")
+        ligne(KO, "SQUASH_MCP_INDEX", "chemin de squash-tm-mcp/dist/index.js")
     elif not os.path.isfile(index):
         ligne(KO, "SQUASH_MCP_INDEX", f"fichier introuvable : {index} (lancer npm install puis npm run build dans squash-tm-mcp)")
+    elif "\\" in index:
+        # OpenCode insère la variable telle quelle dans opencode.json : des \ le rendent invalide.
+        ligne(KO, "SQUASH_MCP_INDEX", "écrire le chemin avec des / (sinon opencode.json devient invalide) : "
+              + index.replace("\\", "/"))
     else:
         ligne(OK, "SQUASH_MCP_INDEX", index)
     url = os.environ.get("SQUASH_TM_BASE_URL", "")

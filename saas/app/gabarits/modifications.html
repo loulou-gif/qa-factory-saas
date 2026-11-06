@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block titre %}Modifications proposées · {{ fiche.nom }}{% endblock %}
+{% macro texte(valeur) %}{{ valeur if valeur else '—' }}{% endmacro %}
+{% block contenu %}
+<div class="etroit large-resultats" id="modifications" data-projet="{{ code }}" data-campagne="{{ campagne }}">
+  <a class="retour" href="/projets/{{ code }}/tests?campagne={{ campagne }}">Retour aux résultats</a>
+  <h1>Modifications proposées</h1>
+  <p class="sous-titre">{% if traitees %}Décision déjà prise pour cette campagne.{% else %}L'assistant propose de corriger {{ mods|length }} cas d'après ce qu'il a observé sur l'application.
+    Décochez ce que vous ne voulez pas garder, puis appliquez.{% endif %}</p>
+
+  {% for m in mods %}
+  <article class="modif {{ m.decision or '' }}" data-id="{{ m.id }}">
+    <div class="modif-tete">
+      {% if not traitees %}
+      <label class="garder"><input type="checkbox" checked data-garder> Garder</label>
+      {% else %}
+      <span class="pastille {{ 'ok' if m.decision == 'acceptee' else 'neutre' }}">{{ 'Acceptée' if m.decision == 'acceptee' else 'Refusée' }}</span>
+      {% endif %}
+      <span class="id">{{ m.id }}</span><strong>{{ m.titre_cas }}</strong>
+    </div>
+    <p class="raison"><span class="discret">Pourquoi :</span> {{ m.raison }}</p>
+
+    {% for champ, libelle in (('titre', 'Titre'), ('prerequis', 'Avant de commencer')) %}
+    {% if champ in m.apres %}
+    <div class="champ-modifie"><span class="libelle">{{ libelle }}</span>
+      <div class="avant-apres"><del>{{ texte(m.avant[champ]) }}</del><ins>{{ m.apres[champ] }}</ins></div></div>
+    {% endif %}
+    {% endfor %}
+
+    {% if 'etapes' in m.apres %}
+    {% set av = m.avant.etapes or [] %}{% set ap = m.apres.etapes %}
+    <table class="etapes-diff">
+      <thead><tr><th></th><th>Avant</th><th>Après</th></tr></thead>
+      <tbody>
+      {% for i in range([av|length, ap|length]|max) %}
+      {% set a = av[i] if i < av|length else none %}{% set b = ap[i] if i < ap|length else none %}
+      {% set change = a != b %}
+      <tr class="{{ 'change' if change }}">
+        <td class="n">{{ i + 1 }}</td>
+        <td>{% if a %}<span class="fait">{{ a.action }}</span><span class="voit">{{ a.resultat_attendu }}</span>{% else %}<span class="discret">—</span>{% endif %}</td>
+        <td>{% if b %}<span class="fait">{{ b.action }}</span><span class="voit">{{ b.resultat_attendu }}</span>{% else %}<span class="discret">Étape retirée</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if m.preuves %}<p class="petit"><a href="/projets/{{ code }}/telecharger/{{ chemin }}/{{ m.preuves[0] }}" target="_blank" rel="noopener">Voir la capture</a></p>{% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% if not traitees %}
+<div class="barre-bas"><div class="interieur">
+  <span class="discret" id="compte-garder" aria-live="polite"></span>
+  <button class="bouton" type="button" id="appliquer" {% if occupe %}disabled title="Une tâche est en cours sur ce projet"{% endif %}>Appliquer</button>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block script %}{% if not traitees %}<script>QAF.modifications(document.getElementById('modifications'));</script>{% endif %}{% endblock %}

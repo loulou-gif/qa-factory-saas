@@ -9,15 +9,26 @@
 // Usage :
 //   node saas/publier_squash.mjs --fichier <publication.json> --correspondance <correspondance.json> [--jeux <jeux-squash.json>] [--appliquer]
 //   node saas/publier_squash.mjs --lister-projets
+//   node saas/publier_squash.mjs --tester            (connexion : nombre de projets visibles par le compte)
+//
+// --arret <fichier> : dès que ce fichier existe, la publication s'arrête proprement avant la création suivante
+// (bouton « Arrêter » de l'application) ; la correspondance reste juste, une relance reprend sans doublon.
+// SQUASH_RESEAU_PUBLIC_SEUL=1 : n'accepte que des adresses publiques, contrôlées à la connexion (reseau_public.mjs).
 //
 // Jeux de données (--jeux) : sur les cas créés par QA Factory (présents dans la correspondance), crée les
 // paramètres et les jeux manquants et renseigne un jeu dont toutes les valeurs sont vides. Un jeu qui a déjà
 // au moins une valeur dans Squash n'est jamais modifié.
 // Variables : SQUASH_MCP_DIR (dossier du MCP squash-tm, compilé), SQUASH_TM_BASE_URL,
 //             SQUASH_TM_API_TOKEN ou SQUASH_TM_USERNAME + SQUASH_TM_PASSWORD.
+//             L'application les fournit à chaque appel, depuis la connexion Squash de l'utilisateur.
 // Sortie : le résultat en JSON sur la sortie standard. Code 0 si terminé sans erreur, 1 sinon.
 
+import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { installerGardeReseau } from './reseau_public.mjs';
+
+installerGardeReseau();
 
 const args = process.argv.slice(2);
 const valeur = (nom) => {
@@ -27,6 +38,8 @@ const valeur = (nom) => {
 const fichier = valeur('--fichier');
 const correspondance = valeur('--correspondance');
 const appliquer = args.includes('--appliquer');
+const fichierArret = valeur('--arret');
+const doitArreter = () => Boolean(fichierArret) && fs.existsSync(fichierArret);
 const dossierMcp = process.env.SQUASH_MCP_DIR || '';
 
 const sortir = (obj, code) => {
@@ -35,20 +48,31 @@ const sortir = (obj, code) => {
 };
 
 const lister = args.includes('--lister-projets');
+const tester = args.includes('--tester');
 const fichierJeux = valeur('--jeux');
-if (!lister && (!fichier || !correspondance)) sortir({ termine: false, erreurs: ['--fichier et --correspondance sont obligatoires'] }, 1);
+if (!lister && !tester && (!fichier || !correspondance)) sortir({ termine: false, erreurs: ['--fichier et --correspondance sont obligatoires'] }, 1);
 if (!dossierMcp) sortir({ termine: false, erreurs: ['SQUASH_MCP_DIR non défini'] }, 1);
 if (!process.env.SQUASH_TM_BASE_URL) sortir({ termine: false, erreurs: ['SQUASH_TM_BASE_URL non défini'] }, 1);
 
 let SquashTMClient, publierFichier;
 try {
-  ({ SquashTMClient } = await import(path.join(dossierMcp, 'dist/clients/index.js')));
-  ({ publierFichier } = await import(path.join(dossierMcp, 'dist/publish/publishBatch.js')));
+  ({ SquashTMClient } = await import(pathToFileURL(path.join(dossierMcp, 'dist/clients/index.js')).href));
+  ({ publierFichier } = await import(pathToFileURL(path.join(dossierMcp, 'dist/publish/publishBatch.js')).href));
 } catch (e) {
   sortir({ termine: false, erreurs: [`MCP squash-tm introuvable ou non compilé dans ${dossierMcp} : ${e.message}`] }, 1);
 }
 
 const client = new SquashTMClient();
+
+if (tester) {
+  try {
+    const r = await client.getAllProjects({ page: 0, size: 1 });
+    const visibles = (r && r.page && r.page.totalElements) ?? ((r && r._embedded && r._embedded.projects) || []).length;
+    sortir({ termine: true, projets_visibles: visibles, erreurs: [] }, 0);
+  } catch (e) {
+    sortir({ termine: false, erreurs: [String(e && e.message ? e.message : e)] }, 1);
+  }
+}
 
 if (lister) {
   try {
@@ -68,7 +92,6 @@ if (lister) {
 
 // ---- Jeux de données
 async function traiterJeux(appliquer) {
-  const fs = await import('node:fs');
   const bilan = { a_creer: 0, a_completer: 0, deja_renseignes: 0, crees: 0, completes: 0, erreurs: [] };
   if (!fichierJeux || !fs.existsSync(fichierJeux)) return bilan;
   const jeux = JSON.parse(fs.readFileSync(fichierJeux, 'utf8'));
@@ -96,6 +119,7 @@ async function traiterJeux(appliquer) {
           bilan.a_creer++;
         }
         if (!appliquer) continue;
+        if (doitArreter()) { bilan.arrete = true; return bilan; }
         for (const p of j.parametres) {
           if (!(tc.parameters || []).some((x) => x.name === p.nom)) await client.createParameter(id, p.nom);
         }
@@ -129,9 +153,11 @@ try {
     fichierCorrespondance: path.resolve(correspondance),
     appliquer,
     squashUrl: process.env.SQUASH_TM_BASE_URL,
+    doitArreter,
   });
-  if (!resultat.erreurs || !resultat.erreurs.length) {
+  if (!resultat.arrete && (!resultat.erreurs || !resultat.erreurs.length)) {
     resultat.jeux = await traiterJeux(appliquer);
+    if (resultat.jeux.arrete) resultat.arrete = true;
     if (resultat.jeux.erreurs.length) resultat.erreurs = resultat.jeux.erreurs.map((e) => `Jeu de données, ${e}`);
   }
   sortir(resultat, resultat.erreurs && resultat.erreurs.length ? 1 : 0);

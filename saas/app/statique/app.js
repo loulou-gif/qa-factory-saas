@@ -88,15 +88,15 @@
           cible = 100; termine = true;
           setTimeout(function () {
             zone.classList.add('fini');
-            phrase.textContent = 'Génération terminée';
-            if (aide) aide.textContent = 'Ouverture de vos fichiers…';
+            phrase.textContent = d.type === 'tester' ? 'Tests terminés' : 'Génération terminée';
+            if (aide) aide.textContent = d.type === 'tester' ? 'Ouverture des résultats…' : 'Ouverture de vos fichiers…';
             setTimeout(fini, 1600);
           }, 700);
           return;
         }
         if (!d.actif) {
           zone.classList.remove('travail'); zone.classList.add('echec');
-          phrase.textContent = "La génération n'a pas abouti";
+          phrase.textContent = d.type === 'tester' ? "Les tests n'ont pas abouti" : "La génération n'a pas abouti";
           if (aide) aide.textContent = d.erreur || '';
           zone.dispatchEvent(new CustomEvent('echec'));
           return;
@@ -285,58 +285,154 @@
   }
 
   /* ---------- envoi dans Squash ---------- */
+  function sansAccents(t) { return String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+
+  /* Champ de recherche avec la liste des projets Squash (combobox ARIA) : on tape une partie du nom
+     ou le numéro, on choisit au clavier ou à la souris ; le projet retenu est rappelé sous le champ. */
+  function choixProjet(zone, projets) {
+    var champ = zone.querySelector('#squash-recherche'), liste = zone.querySelector('#squash-liste');
+    var cache = zone.querySelector('#squash-projet'), etat = zone.querySelector('.combo-etat');
+    var ouvrir = zone.querySelector('.combo-ouvrir'), visibles = [], actif = -1, MAX = 60;
+    function choisi() { return projets.filter(function (p) { return String(p.id) === cache.value; })[0]; }
+    function afficherEtat() {
+      var p = choisi();
+      etat.textContent = '';
+      zone.classList.toggle('combo-retenu', !!p);
+      if (p) {
+        etat.appendChild(document.createTextNode('Les cas seront envoyés dans '));
+        etat.appendChild(el('strong', { texte: p.nom }));
+        etat.appendChild(document.createTextNode(' (projet n° ' + p.id + ').'));
+      } else {
+        var n = projets.length;
+        etat.textContent = n ? n + ' projet' + (n > 1 ? 's' : '') + ' visible' + (n > 1 ? 's' : '') + ' avec votre compte Squash.'
+          : "Aucun projet visible avec ce compte Squash : vérifiez ses droits dans Squash.";
+      }
+    }
+    function surligner(nom, t) {
+      var span = el('span', { 'class': 'nom-projet' });
+      var i = t ? sansAccents(nom).indexOf(t) : -1;
+      if (i < 0) { span.textContent = nom; return span; }
+      span.appendChild(document.createTextNode(nom.slice(0, i)));
+      span.appendChild(el('mark', { texte: nom.slice(i, i + t.length) }));
+      span.appendChild(document.createTextNode(nom.slice(i + t.length)));
+      return span;
+    }
+    function fermer() { liste.hidden = true; champ.setAttribute('aria-expanded', 'false'); champ.removeAttribute('aria-activedescendant'); actif = -1; }
+    function marquer(i) {
+      var opts = liste.querySelectorAll('[role=option]');
+      if (!opts.length) return;
+      actif = (i + opts.length) % opts.length;
+      opts.forEach(function (o, k) { o.classList.toggle('actif', k === actif); o.setAttribute('aria-selected', k === actif ? 'true' : 'false'); });
+      champ.setAttribute('aria-activedescendant', opts[actif].id);
+      opts[actif].scrollIntoView({ block: 'nearest' });
+    }
+    function prendre(p) {
+      cache.value = String(p.id);
+      champ.value = p.nom; fermer(); afficherEtat();
+      var cadre = zone.closest('.encadre'), m = cadre && cadre.querySelector('.message.erreur');
+      if (m) m.remove();
+    }
+    function remplir(tout) {
+      var t = tout ? '' : sansAccents(champ.value.trim());
+      visibles = projets.filter(function (p) { return !t || sansAccents(p.nom).indexOf(t) >= 0 || String(p.id) === t; });
+      liste.innerHTML = '';
+      if (!visibles.length) liste.appendChild(el('li', { 'class': 'combo-vide', texte: 'Aucun projet ne correspond à « ' + champ.value.trim() + ' ».' }));
+      visibles.slice(0, MAX).forEach(function (p, k) {
+        var li = el('li', { id: 'squash-option-' + k, role: 'option', 'aria-selected': 'false' },
+          [surligner(p.nom, t), el('span', { 'class': 'numero-projet', texte: 'n° ' + p.id })]);
+        if (String(p.id) === cache.value) li.classList.add('retenu');
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); prendre(p); });
+        liste.appendChild(li);
+      });
+      if (visibles.length > MAX) liste.appendChild(el('li', { 'class': 'combo-vide', texte: (visibles.length - MAX) + ' autres projets : précisez la recherche.' }));
+      liste.hidden = false; champ.setAttribute('aria-expanded', 'true'); actif = -1;
+      if (t && visibles.length) marquer(0);
+    }
+    champ.disabled = false;
+    champ.placeholder = 'Tapez le nom ou le numéro du projet';
+    var deja = choisi();
+    if (deja) champ.value = deja.nom; else cache.value = '';
+    afficherEtat();
+    champ.addEventListener('input', function () {
+      var p = choisi();
+      if (p && champ.value !== p.nom) { cache.value = ''; afficherEtat(); }
+      remplir(false);
+    });
+    champ.addEventListener('focus', function () { remplir(!!choisi()); });
+    champ.addEventListener('click', function () { if (liste.hidden) remplir(!!choisi()); });
+    champ.addEventListener('blur', function () { fermer(); var p = choisi(); if (p) champ.value = p.nom; });
+    champ.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (liste.hidden) remplir(!!choisi()); marquer(actif + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (liste.hidden) remplir(!!choisi()); marquer(actif - 1); }
+      else if (e.key === 'Enter') { if (!liste.hidden && actif >= 0 && visibles[actif]) { e.preventDefault(); prendre(visibles[actif]); } }
+      else if (e.key === 'Escape') { if (!liste.hidden) { e.preventDefault(); fermer(); } }
+    });
+    if (ouvrir) {
+      ouvrir.disabled = false;
+      ouvrir.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        if (liste.hidden) { champ.focus(); remplir(true); } else fermer();
+      });
+    }
+    return { choisi: choisi };
+  }
+
   function squash(cadre) {
     var projet = cadre.getAttribute('data-projet');
     var saisie = cadre.querySelector('[data-zone=saisie]'), prog = cadre.querySelector('[data-zone=progression]');
     var phrase = prog.querySelector('.phrase-squash'), barre = prog.querySelector('.barre div');
-    var choix = cadre.querySelector('#squash-projet'), filtre = cadre.querySelector('#squash-filtre');
-    var actuel = cadre.querySelector('#squash-actuel'), tous = [];
+    var boutonArret = prog.querySelector('[data-action=arreter]');
+    var zoneChoix = cadre.querySelector('#combo-squash'), selecteur = null, tacheEnCours = null;
     function montrer(texte, p) { saisie.hidden = true; prog.hidden = false; phrase.textContent = texte; barre.style.width = p + '%'; }
-    function erreur(m) {
-      prog.hidden = true; saisie.hidden = false;
+    function message(m, genre) {
+      prog.hidden = true; saisie.hidden = false; boutonArret.hidden = true; tacheEnCours = null;
       var ancien = cadre.querySelector('.message'); if (ancien) ancien.remove();
-      cadre.insertBefore(el('div', { 'class': 'message erreur', texte: m }), cadre.firstChild);
+      cadre.insertBefore(el('div', { 'class': 'message ' + genre, texte: m }), cadre.firstChild);
       var b = saisie.querySelector('[data-action=verifier]'); if (b) b.disabled = false;
     }
-    function remplir(liste) {
-      var garde = choix.value || (actuel ? actuel.value : '');
-      choix.innerHTML = '';
-      choix.appendChild(el('option', { value: '', texte: liste.length ? 'Choisir le projet…' : 'Aucun projet trouvé' }));
-      liste.forEach(function (p) { var o = el('option', { value: String(p.id), texte: p.nom }); if (String(p.id) === garde) o.selected = true; choix.appendChild(o); });
-    }
-    if (choix) {
+    function erreur(m) { message(m, 'erreur'); }
+    if (zoneChoix) {
       api('/projets/' + projet + '/squash/projets').then(function (d) {
-        tous = d.projets || [];
-        choix.disabled = false; remplir(tous);
-        if (tous.length > 8) filtre.hidden = false;
+        selecteur = choixProjet(zoneChoix, d.projets || []);
       }).catch(function (e) {
         // Liste indisponible : on garde la saisie du numéro, comme avant.
+        var cache = zoneChoix.querySelector('#squash-projet');
         var champ = el('input', { type: 'text', id: 'squash-numero', inputmode: 'numeric', placeholder: 'Numéro du projet Squash, ex. 28' });
-        if (actuel) champ.value = actuel.value;
-        choix.replaceWith(champ); choix = null;
+        champ.value = cache.value;
+        zoneChoix.querySelector('.combo-saisie').replaceWith(champ);
+        zoneChoix.querySelector('.combo-etat').textContent = '';
         cadre.insertBefore(el('div', { 'class': 'message alerte', texte: 'Liste des projets Squash indisponible (' + e.message + ') : indiquez le numéro du projet.' }), cadre.firstChild);
       });
-      filtre.addEventListener('input', function () {
-        var t = filtre.value.trim().toLowerCase();
-        remplir(tous.filter(function (p) { return !t || p.nom.toLowerCase().indexOf(t) >= 0; }));
-      });
     }
-    function suivre(tid, auFini) {
+    boutonArret.addEventListener('click', function () {
+      if (!tacheEnCours) return;
+      boutonArret.disabled = true; boutonArret.textContent = 'Arrêt en cours…';
+      api('/taches/' + tacheEnCours + '/arreter', {}).catch(function (e) { boutonArret.disabled = false; boutonArret.textContent = "Arrêter l'envoi"; erreur(e.message); });
+    });
+    function suivre(tid, auFini, arretable) {
+      tacheEnCours = tid;
+      if (arretable && boutonArret.hidden) { boutonArret.hidden = false; boutonArret.disabled = false; boutonArret.textContent = "Arrêter l'envoi"; }
       api('/taches/' + tid + '/progression').then(function (d) {
-        if (d.statut === 'termine') return auFini(d);
+        if (d.statut === 'termine') { boutonArret.hidden = true; tacheEnCours = null; return auFini(d); }
+        if (d.statut === 'annule') return message(d.erreur || 'Envoi arrêté.', 'alerte');
         if (!d.actif) return erreur(d.erreur || 'Échec.');
         montrer(d.message, d.pourcentage);
-        setTimeout(function () { suivre(tid, auFini); }, 1200);
+        setTimeout(function () { suivre(tid, auFini, arretable); }, 1200);
       }).catch(function (e) { erreur(e.message); });
     }
     cadre.querySelector('[data-action=verifier]').addEventListener('click', function (ev) {
       var corps = { url: (cadre.querySelector('#squash-url') || {}).value || '' };
       var numero = cadre.querySelector('#squash-numero');
-      if (choix) {
-        if (!choix.value) return erreur('Choisissez le projet Squash dans la liste.');
-        corps.squash_id = choix.value; corps.squash_nom = choix.options[choix.selectedIndex].textContent;
-      } else if (numero) {
+      if (numero) {
         corps.squash_id = numero.value.trim();
+      } else if (zoneChoix) {
+        var p = selecteur && selecteur.choisi();
+        if (!p) {
+          erreur(selecteur ? 'Choisissez le projet Squash dans la liste.' : 'La liste des projets Squash est en cours de chargement.');
+          var r = cadre.querySelector('#squash-recherche'); if (r && !r.disabled) r.focus();
+          return;
+        }
+        corps.squash_id = String(p.id); corps.squash_nom = p.nom;
       }
       ev.target.disabled = true;
       montrer('Vérification de ce qui existe déjà dans Squash', 8);
@@ -350,7 +446,7 @@
           var lignes = [el('p', { texte: (n ? n + ' éléments (exigences, cas de tests et dossiers) seront créés' : 'Aucun nouveau cas à créer') + ' dans le projet Squash « ' + (pr.nom || '?') + ' ».' })];
           if (nJeux) lignes.push(el('p', { texte: nJeux + ' jeu' + (nJeux > 1 ? 'x' : '') + ' de données ' + (nJeux > 1 ? 'seront renseignés' : 'sera renseigné') + ' sur les cas.' }));
           if (s.exclus) lignes.push(el('p', { 'class': 'discret', texte: s.exclus + ' cas en attente d\'une réponse bloquante ne sont pas envoyés.' }));
-          lignes.push(el('p', { 'class': 'discret', texte: 'Rien de ce qui existe dans Squash ne sera modifié ni supprimé. Durée estimée : ' + minutes + ' min.' }));
+          lignes.push(el('p', { 'class': 'discret', texte: 'Rien de ce qui existe dans Squash ne sera modifié ni supprimé. Durée estimée : ' + minutes + ' min. Vous pourrez arrêter l\'envoi en cours de route : une relance reprendra la suite, sans doublon.' }));
           dialogue('Envoyer dans Squash ?', lignes, [{ libelle: 'Annuler', valeur: false }, { libelle: 'Envoyer', valeur: true, principal: true }]).then(function (ok) {
             if (!ok) { prog.hidden = true; saisie.hidden = false; ev.target.disabled = false; return; }
             montrer('Envoi dans Squash', 3);
@@ -358,11 +454,62 @@
               suivre(p.tache, function (f) {
                 montrer('Envoyé dans Squash : ' + (f.crees || 0) + ' éléments créés', 100);
                 setTimeout(function () { location.reload(); }, 1500);
-              });
+              }, true);
             }).catch(function (e) { erreur(e.message); });
           });
         });
       }).catch(function (e) { erreur(e.message); });
+    });
+  }
+
+  /* ---------- tests de l'application : lancement ---------- */
+  function lancerTests(cadre) {
+    if (!cadre) return;
+    var bouton = cadre.querySelector('[data-action=tester]');
+    if (!bouton) return;
+    bouton.addEventListener('click', function () {
+      var texte = bouton.textContent;
+      bouton.disabled = true; bouton.textContent = 'Démarrage…';
+      api('/projets/' + cadre.getAttribute('data-projet') + '/tester', {}).then(function () {
+        location.reload();
+      }).catch(function (e) {
+        bouton.disabled = false; bouton.textContent = texte;
+        var ancien = cadre.querySelector('.message'); if (ancien) ancien.remove();
+        cadre.insertBefore(el('div', { 'class': 'message erreur', texte: e.message }), cadre.firstChild);
+      });
+    });
+  }
+
+  /* ---------- modifications de cas proposées après les tests ---------- */
+  function modifications(zone) {
+    if (!zone) return;
+    var cases = zone.querySelectorAll('[data-garder]'), bouton = document.getElementById('appliquer');
+    var compte = document.getElementById('compte-garder');
+    function maj() {
+      var n = 0;
+      cases.forEach(function (c) { if (c.checked) n++; c.closest('.modif').classList.toggle('ecartee', !c.checked); });
+      compte.textContent = n + ' sur ' + cases.length + ' correction' + (cases.length > 1 ? 's' : '') + ' gardée' + (n > 1 ? 's' : '');
+      bouton.textContent = n ? 'Appliquer ' + n + ' correction' + (n > 1 ? 's' : '') : 'Tout refuser';
+    }
+    cases.forEach(function (c) { c.addEventListener('change', maj); });
+    maj();
+    bouton.addEventListener('click', function () {
+      var acceptes = [];
+      cases.forEach(function (c) { if (c.checked) acceptes.push(c.closest('.modif').getAttribute('data-id')); });
+      var lignes = [el('p', { texte: acceptes.length
+        ? acceptes.length + ' cas de la version validée seront modifiés (' + acceptes.join(', ') + '). Les autres propositions seront refusées.'
+        : 'Toutes les propositions seront refusées ; les cas restent inchangés.' })];
+      dialogue(acceptes.length ? 'Appliquer les corrections ?' : 'Tout refuser ?', lignes,
+        [{ libelle: 'Annuler', valeur: false }, { libelle: acceptes.length ? 'Appliquer' : 'Tout refuser', valeur: true, principal: true }]).then(function (ok) {
+        if (!ok) return;
+        bouton.disabled = true;
+        api('/projets/' + zone.getAttribute('data-projet') + '/tests/modifications', { campagne: zone.getAttribute('data-campagne'), acceptes: acceptes })
+          .then(function (r) { location.href = r.redirection; })
+          .catch(function (e) {
+            bouton.disabled = false;
+            dialogue('Modifications non appliquées', [el('p', { texte: e.message })], [{ libelle: 'Compris', valeur: true, principal: true }]);
+          });
+      });
     });
   }
 
@@ -443,5 +590,6 @@
     window.addEventListener('beforeunload', function (e) { if (Object.keys(modifies).length) { e.preventDefault(); e.returnValue = ''; } });
   }
 
-  window.QAF = { depot: depot, suivreTache: suivreTache, cas: cas, squash: squash, questions: questions, jeux: jeux };
+  window.QAF = { depot: depot, suivreTache: suivreTache, cas: cas, squash: squash, questions: questions, jeux: jeux,
+                 lancerTests: lancerTests, modifications: modifications };
 })();

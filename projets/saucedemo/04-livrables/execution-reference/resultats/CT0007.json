@@ -1,0 +1,21 @@
+{
+  "id": "CT0007",
+  "statut": "reussi",
+  "commentaire": "Message affiché : « Epic sadface: Sorry, this user has been locked out. »",
+  "etapes": [
+    {
+      "numero": 1,
+      "statut": "reussi",
+      "observe": "Conforme."
+    },
+    {
+      "numero": 2,
+      "statut": "reussi",
+      "observe": "Conforme."
+    }
+  ],
+  "anomalie": null,
+  "preuves": [],
+  "proposition": null,
+  "duree_s": 34
+}

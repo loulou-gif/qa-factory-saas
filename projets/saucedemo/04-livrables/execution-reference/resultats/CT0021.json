@@ -1,0 +1,42 @@
+{
+  "id": "CT0021",
+  "statut": "reussi",
+  "commentaire": "Conforme au résultat attendu.",
+  "etapes": [
+    {
+      "numero": 1,
+      "statut": "reussi",
+      "observe": "Conforme."
+    },
+    {
+      "numero": 2,
+      "statut": "reussi",
+      "observe": "Conforme."
+    },
+    {
+      "numero": 3,
+      "statut": "reussi",
+      "observe": "Conforme."
+    }
+  ],
+  "anomalie": null,
+  "preuves": [],
+  "proposition": {
+    "raison": "Noms réels des boutons et du message de fin de commande observés.",
+    "etapes": [
+      {
+        "action": "Depuis le panier contenant un article, cliquer sur « Checkout »",
+        "resultat_attendu": "Le formulaire d'informations s'affiche avec les champs prénom, nom et code postal."
+      },
+      {
+        "action": "Renseigner le prénom, le nom et le code postal de JDD-004, puis passer à l'étape suivante",
+        "resultat_attendu": "Le récapitulatif s'affiche avec les articles, le moyen de paiement, le mode de livraison, le total hors taxes, les taxes et le total."
+      },
+      {
+        "action": "Cliquer sur « Finish »",
+        "resultat_attendu": "La page « Checkout: Complete! » affiche « Thank you for your order! »."
+      }
+    ]
+  },
+  "duree_s": 41
+}

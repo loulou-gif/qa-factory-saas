@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block titre %}Connexion à Squash · QA Factory{% endblock %}
+{% block contenu %}
+<div class="boite boite-large" style="margin-top:2vh">
+  <h1>Connexion à Squash</h1>
+  <p class="discret">QA Factory envoie vos exigences et vos cas de tests dans votre Squash TM avec ce compte. Il ne modifie ni ne supprime rien de ce qui s'y trouve déjà.</p>
+
+  {% if cx %}
+  <div class="message ok" style="animation:none">Connecté à {{ cx.adresse }}
+    {%- if cx.mode == 'compte' %} avec le compte {{ cx.identifiant }}{% else %} avec un jeton d'API{% endif %}.
+    Vérifié le {{ cx.verifiee_le }}, {{ cx.projets }} projet{{ 's' if cx.projets != 1 }} visible{{ 's' if cx.projets != 1 }}.</div>
+  {% endif %}
+
+  <form method="post" action="/parametres/squash" id="form-squash">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    <label for="adresse">Adresse de Squash</label>
+    <input type="text" id="adresse" name="adresse" value="{{ adresse }}" inputmode="url" autocomplete="url" spellcheck="false"
+           placeholder="https://squash.mon-entreprise.com/squash" required aria-describedby="aide-adresse">
+    <p id="aide-adresse" class="discret petit aide-champ">L'adresse que vous ouvrez dans votre navigateur pour aller sur Squash.</p>
+
+    <fieldset class="choix-mode">
+      <legend>Se connecter avec</legend>
+      {% for cle, libelle in modes.items() %}
+      <label><input type="radio" name="mode" value="{{ cle }}" {% if mode == cle %}checked{% endif %}> {{ libelle }}</label>
+      {% endfor %}
+    </fieldset>
+
+    <div data-pour="compte">
+      <label for="identifiant">Identifiant</label>
+      <input type="text" id="identifiant" name="identifiant" value="{{ identifiant }}" autocomplete="username" spellcheck="false">
+    </div>
+
+    <label for="secret" data-libelle-compte="Mot de passe" data-libelle-jeton="Jeton d'API">{{ "Jeton d'API" if mode == 'jeton' else 'Mot de passe' }}</label>
+    <input type="password" id="secret" name="secret" autocomplete="new-password" aria-describedby="aide-secret">
+    <p id="aide-secret" class="discret petit aide-champ">
+      <span data-pour="jeton">Plus sûr qu'un mot de passe : le jeton peut être révoqué à tout moment dans Squash et expire à la date choisie.<br></span>
+      Stocké chiffré, jamais réaffiché.{% if cx %} Laissez vide pour garder celui qui est enregistré, si l'adresse et le compte ne changent pas.{% endif %}
+    </p>
+
+    <details class="aide-jeton" data-pour="jeton">
+      <summary>Comment créer un jeton d'API dans Squash</summary>
+      <ol>
+        <li>Dans Squash, ouvrez <strong>Mon compte</strong> (votre nom, en bas à gauche).</li>
+        <li>Section <strong>Jetons d'API personnels</strong> : <strong>Ajouter un jeton</strong>.</li>
+        <li>Donnez-lui un nom (par exemple « QA Factory »), choisissez le droit <strong>Lecture et écriture</strong> et une date d'expiration.</li>
+        <li>Copiez le jeton affiché (Squash ne le montre qu'une fois) et collez-le ci-dessus.</li>
+      </ol>
+      <p class="discret petit">Si Squash répond qu'aucun secret JWT n'est configuré, l'administrateur de Squash doit l'activer ; en attendant, utilisez l'identifiant et le mot de passe.</p>
+    </details>
+
+    <button class="bouton" type="submit">Tester et enregistrer</button>
+  </form>
+
+  {% if cx %}
+  <form method="post" action="/parametres/squash/supprimer" class="supprimer-connexion">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="lien-bouton" type="submit">Supprimer la connexion</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+{% block script %}<script>
+(function () {
+  var f = document.getElementById('form-squash'), libelle = f.querySelector('label[for=secret]');
+  function appliquer() {
+    var mode = (f.querySelector('input[name=mode]:checked') || {}).value || 'jeton';
+    f.querySelectorAll('[data-pour]').forEach(function (z) { z.hidden = z.getAttribute('data-pour') !== mode; });
+    libelle.textContent = libelle.getAttribute('data-libelle-' + mode);
+    document.getElementById('identifiant').required = mode === 'compte';
+  }
+  f.addEventListener('change', appliquer); appliquer();
+  f.addEventListener('submit', function () { var b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Test de la connexion…'; });
+})();
+</script>{% endblock %}

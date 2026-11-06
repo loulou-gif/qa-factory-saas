@@ -8,9 +8,12 @@ import base64
 import json
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 IDENTIFIANTS = ("qa", "secret")
+JETON = "jeton-valide"
+JETON_SANS_JWT = "instance-sans-jwt"  # simule une instance où les jetons d'API ne sont pas activés
 
 
 class FauxSquash:
@@ -21,6 +24,8 @@ class FauxSquash:
                       "datasets": {}, "parameters": {}}
         self.store["projects"][29] = {"_type": "project", "id": 29, "name": "Autre projet"}
         self.requetes = []
+        self.authentifications = []
+        self.lenteur_creation = 0.0  # secondes ajoutées à chaque POST (essais d'arrêt en cours d'envoi)
         self.verrou = threading.Lock()
         faux = self
 
@@ -38,8 +43,14 @@ class FauxSquash:
 
             def _traiter(self):
                 attendu = "Basic " + base64.b64encode(":".join(IDENTIFIANTS).encode()).decode()
-                if self.headers.get("Authorization") != attendu:
+                recu = self.headers.get("Authorization")
+                faux.authentifications.append(recu)
+                if recu == f"Bearer {JETON_SANS_JWT}":
+                    return self._envoyer(401, {"error": "Aucun secret JWT n'est défini pour cette instance."})
+                if recu not in (attendu, f"Bearer {JETON}"):
                     return self._envoyer(401, {"error": "unauthorized"})
+                if self.command == "POST" and faux.lenteur_creation:
+                    time.sleep(faux.lenteur_creation)
                 n = int(self.headers.get("Content-Length") or 0)
                 corps = json.loads(self.rfile.read(n) or b"null") if n else None
                 chemin, _, requete = self.path.partition("?")

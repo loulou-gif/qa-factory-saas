@@ -2,15 +2,10 @@
 """Parcours complet du temps A dans l'application web, avec le vrai OpenCode (faux modèle) et un faux Squash.
 
 Lancement : cd saas && python -m pytest -q tests
-Prérequis : opencode, node, python avec fastapi/httpx/openpyxl/python-docx, et le MCP squash-tm compilé
-(SQUASH_MCP_DIR, défaut ../squash-tm-mcp à côté du dépôt).
+Prérequis : opencode, node, python avec fastapi/httpx/openpyxl/python-docx/cryptography, et le MCP squash-tm
+compilé (SQUASH_MCP_DIR, défaut ../squash-tm-mcp à côté du dépôt). Espace commun : conftest.py.
 """
-import io
 import json
-import os
-import re
-import shutil
-import socket
 import subprocess
 import sys
 import time
@@ -18,18 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from conftest import connecter, csrf, jx, regler_squash
+
 ICI = Path(__file__).resolve().parent
-DEPOT = ICI.parents[1]
-sys.path.insert(0, str(ICI))
-from faux_squash import FauxSquash  # noqa: E402
-
-MCP = Path(os.environ.get("SQUASH_MCP_DIR") or DEPOT.parent / "squash-tm-mcp")
-
-
-def port_libre():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def attendre(cond, delai=120, pas=0.5):
@@ -43,42 +29,19 @@ def attendre(cond, delai=120, pas=0.5):
 
 
 @pytest.fixture(scope="module")
-def env(tmp_path_factory):
-    if not (MCP / "dist" / "publish" / "publishBatch.js").exists():
-        pytest.skip(f"MCP squash-tm compilé introuvable ({MCP})")
-    racine = tmp_path_factory.mktemp("espace") / "qa-factory"
-    shutil.copytree(DEPOT, racine, ignore=shutil.ignore_patterns(".git", "donnees", "__pycache__", "node_modules"))
-    for p in (racine / "projets").iterdir():
-        if p.name != "saucedemo":
-            shutil.rmtree(p)
-    subprocess.run(["git", "init", "-q"], cwd=racine, check=True)
-    squash = FauxSquash()
-    p_modele, p_oc = port_libre(), port_libre()
-    modele = subprocess.Popen([sys.executable, str(ICI.parent / "dev" / "faux_modele.py"), str(p_modele)])
-    serveur = json.loads((ICI.parent / "opencode.serveur.json").read_text(encoding="utf-8"))
-    serveur["provider"].update(json.loads((ICI.parent / "dev" / "opencode.simulation.json").read_text(encoding="utf-8"))["provider"])
-    variables = {
-        "QAF_RACINE": str(racine), "QAF_DONNEES": str(racine / "saas" / "donnees"), "QAF_SECRET": "secret-de-test",
-        "OPENCODE_URL": f"http://127.0.0.1:{p_oc}", "OPENCODE_SERVER_PASSWORD": "mdp-moteur",
-        "QAF_MODELE": "simulation/demo", "QAF_FAUX_MODELE_URL": f"http://127.0.0.1:{p_modele}/v1",
-        "OPENCODE_CONFIG_CONTENT": json.dumps(serveur),
-        "SQUASH_MCP_DIR": str(MCP), "SQUASH_MCP_INDEX": str(MCP / "dist" / "index.js"),
-        "SQUASH_TM_BASE_URL": squash.url, "SQUASH_TM_USERNAME": "qa", "SQUASH_TM_PASSWORD": "secret",
-        "QAF_ADMIN_IDENTIFIANT": "admin", "QAF_ADMIN_MOT_DE_PASSE": "Provisoire123", "QAF_INTERVALLE_SUIVI_S": "0.5",
-    }
-    os.environ.pop("SQUASH_TM_API_TOKEN", None)
-    os.environ.update(variables)
-    oc = subprocess.Popen(["opencode", "serve", "--port", str(p_oc)], cwd=racine, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    import httpx
-    attendre(lambda: _ok(httpx, f"http://127.0.0.1:{p_oc}/session/status"), 60)
-    sys.path.insert(0, str(ICI.parent))
-    from fastapi.testclient import TestClient
-    from app.main import app
-    with TestClient(app) as client:
-        yield {"client": client, "racine": racine, "squash": squash}
-    oc.terminate()
-    modele.terminate()
-    squash.arreter()
+def env(espace):
+    """Démarre le faux modèle et OpenCode sur les ports réservés par l'espace commun."""
+    ports = espace["ports"]
+    modele = subprocess.Popen([sys.executable, str(ICI.parent / "dev" / "faux_modele.py"), str(ports["modele"])])
+    oc = subprocess.Popen(["opencode", "serve", "--port", str(ports["moteur"])], cwd=espace["racine"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        import httpx
+        attendre(lambda: _ok(httpx, f"http://127.0.0.1:{ports['moteur']}/session/status"), 60)
+        yield espace
+    finally:
+        oc.terminate()
+        modele.terminate()
 
 
 def _ok(httpx, url):
@@ -86,22 +49,6 @@ def _ok(httpx, url):
         return httpx.get(url, auth=("opencode", "mdp-moteur"), timeout=2).status_code == 200
     except Exception:
         return False
-
-
-def csrf(client, url="/"):
-    h = client.get(url).text
-    m = re.search(r'name="csrf" content="([^"]+)"', h) or re.search(r'name="csrf" value="([^"]+)"', h)
-    return m.group(1)
-
-
-def connecter(client, ident, mdp):
-    client.post("/deconnexion", data={"csrf": csrf(client, "/connexion")})
-    r = client.post("/connexion", data={"identifiant": ident, "mot_de_passe": mdp, "csrf": csrf(client, "/connexion")})
-    assert r.status_code in (200, 303)
-
-
-def jx(client, url, corps=None, page="/"):
-    return client.post(url, json=corps or {}, headers={"X-CSRF": csrf(client, page), "Accept": "application/json"})
 
 
 def suivre(client, tid, accepter=True, delai=180):
@@ -125,6 +72,8 @@ def test_parcours_temps_a(env):
                                         "csrf": csrf(c, "/admin/utilisateurs")})
     connecter(c, "test", "Provisoire456")
     c.post("/compte", data={"actuel": "Provisoire456", "nouveau": "Perso-2026-xx", "confirmation": "Perso-2026-xx", "csrf": csrf(c, "/compte")})
+    # Le testeur connecte son propre Squash depuis l'application
+    assert "Squash est connecté : 2 projets visibles" in regler_squash(c, env["squash"].url).text
     accueil = c.get("/").text
     assert 'id="depot"' in accueil and "Déposez ici votre cahier des charges" in accueil
 

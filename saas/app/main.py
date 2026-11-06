@@ -9,7 +9,6 @@ Lancement : uvicorn app.main:app --app-dir saas --host 0.0.0.0 --port 8000
 import json
 import os
 import re
-import subprocess
 from collections import Counter
 from contextlib import asynccontextmanager
 from typing import List
@@ -20,12 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import projets
+from . import campagnes, connexions, projets
 from .config import ICI, reglages
 from .db import STATUTS_ACTIFS, Base, maintenant
 from .moteur import ErreurMoteur, moteur
 from .securite import ROLES, controler_csrf, hacher, jeton_csrf, mot_de_passe_valable, verifier
-from .taches import ErreurTache, expliquer_erreur_squash, gestionnaire, progression
+from .taches import ErreurTache, gestionnaire, progression
 
 reglages.preparer()
 import vues_cas  # noqa: E402  (outils/ est ajouté au chemin par reglages.preparer)
@@ -131,6 +130,21 @@ def a_envoyer(code, e) -> int:
         corr = {}
     deja = set((corr.get("cas_de_tests") or {}).keys())
     return sum(1 for c in data.get("cas_de_tests", []) if c["id"] not in bloques and c["id"] not in deja)
+
+
+def resume_tests(code) -> dict:
+    """Application testée, comptes et derniers résultats, pour la page du projet."""
+    _, s, mods = campagne_lisible(code)
+    return {"app_": campagnes.application(code), "nb_comptes": len(campagnes.comptes(base, code)), "derniers": s,
+            "mods_en_attente": len(mods) if mods and not any(m.get("decision") for m in mods) else 0}
+
+
+def connexion_exigee(u):
+    """Connexion Squash de l'utilisateur, ou erreur 409 qui l'invite à la régler."""
+    cx = connexions.lire(base, u["id"])
+    if not cx:
+        raise HTTPException(409, "Connectez d'abord votre Squash : page Squash, en haut de l'écran.")
+    return cx
 
 
 def derniere_tache(code, type_):
@@ -291,6 +305,8 @@ def tache_progression(request: Request, tid: int):
                                  "exclus": len(r.get("exclus") or {})}
     if t["type"] == "publier" and t["statut"] == "termine":
         reponse["crees"] = len(r.get("crees") or [])
+    if t["type"] == "tester":
+        reponse["campagne"] = (t["parametres"] or {}).get("campagne")
     return reponse
 
 
@@ -367,7 +383,8 @@ def fichiers_page(request: Request, code: str):
                 squash_nom=(projets.fiche(code).get("squash") or {}).get("projet_nom") or "",
                 url_application=(projets.fiche(code).get("application") or {}).get("url") or "",
                 bloques=len(projets.cas_bloques(code, "03-valide")) if e["valide"] and not e["a_valider"] else 0,
-                a_envoyer=a_envoyer(code, e))
+                a_envoyer=a_envoyer(code, e), squash_cx=connexions.resume(connexions.lire(base, u["id"])),
+                **resume_tests(code))
 
 
 @app.get("/projets/{code}/cas", response_class=HTMLResponse)
@@ -535,20 +552,16 @@ def telecharger(request: Request, code: str, chemin: str):
 
 @app.get("/projets/{code}/squash/projets")
 def squash_projets(request: Request, code: str):
-    """Projets Squash visibles par le compte de service, pour les choisir par leur nom."""
-    utilisateur(request)
+    """Projets visibles avec la connexion Squash de l'utilisateur, pour les choisir par leur nom."""
+    u = utilisateur(request)
     exiger_projet(code)
-    if not reglages.squash_mcp_dir or not reglages.squash_url:
-        raise HTTPException(503, "Squash n'est pas configuré sur le serveur (SQUASH_MCP_DIR, SQUASH_TM_BASE_URL).")
+    cx = connexion_exigee(u)
     try:
-        r = subprocess.run(["node", str(reglages.racine / "saas" / "publier_squash.mjs"), "--lister-projets"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90,
-                           env=dict(os.environ, SQUASH_MCP_DIR=reglages.squash_mcp_dir))
-        res = json.loads(r.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError) as ex:
-        raise HTTPException(502, f"Squash ne répond pas : {ex.__class__.__name__}.")
+        res = connexions.appeler_module(cx, "--lister-projets", timeout=90)
+    except connexions.ErreurConnexion as ex:
+        raise HTTPException(502, str(ex))
     if res.get("erreurs"):
-        raise HTTPException(502, expliquer_erreur_squash(res["erreurs"]))
+        raise HTTPException(502, connexions.expliquer(res["erreurs"], connexions.adresse_affichee(cx["url"]), cx["mode"]))
     return {"projets": res.get("projets") or []}
 
 
@@ -557,6 +570,7 @@ async def squash_simuler(request: Request, code: str):
     corps = await json_controle(request)
     u = utilisateur(request)
     exiger_projet(code)
+    cx = connexion_exigee(u)
     sid = str(corps.get("squash_id") or "").strip()
     fiche = projets.fiche(code)
     url = (corps.get("url") or "").strip()
@@ -583,7 +597,7 @@ async def squash_simuler(request: Request, code: str):
     if not (fiche.get("squash") or {}).get("projet_id"):
         raise HTTPException(400, "Choisissez le projet Squash.")
     try:
-        tid = gestionnaire.soumettre(code, "publier-simulation", u)
+        tid = gestionnaire.soumettre(code, "publier-simulation", u, {"instance": cx["url"]})
     except ErreurTache as e:
         raise HTTPException(409, str(e))
     return {"tache": tid}
@@ -598,6 +612,9 @@ async def squash_publier(request: Request, code: str):
     if not s or s["projet"] != code or s["type"] != "publier-simulation" or s["statut"] != "termine":
         raise HTTPException(400, "La vérification préalable n'est plus valable : recommencez.")
     r = s["resultat"] or {}
+    cx = connexion_exigee(u)
+    if r.get("instance") != cx["url"]:
+        raise HTTPException(409, "La connexion Squash a changé depuis la vérification : recommencez l'envoi.")
     resume = r.get("resume") or {}
     deja = 0
     try:
@@ -606,12 +623,192 @@ async def squash_publier(request: Request, code: str):
     except Exception:  # noqa: BLE001
         pass
     try:
-        tid = gestionnaire.soumettre(code, "publier", u, {"empreinte": r.get("empreinte"), "simulation": s["id"],
+        tid = gestionnaire.soumettre(code, "publier", u, {"empreinte": r.get("empreinte"), "simulation": s["id"], "instance": cx["url"],
                                                           "a_creer": int(resume.get("creer", 0)) + int(resume.get("recreer", 0)),
                                                           "deja": deja})
     except ErreurTache as e:
         raise HTTPException(409, str(e))
     return {"tache": tid}
+
+
+# ---------------------------------------------------------------- connexion Squash de l'utilisateur
+
+@app.get("/parametres/squash", response_class=HTMLResponse)
+def parametres_squash_page(request: Request):
+    u = utilisateur(request)
+    cx = connexions.resume(connexions.lire(base, u["id"]))
+    saisie = request.session.pop("saisie_squash", None) or {}
+    return page(request, "parametres_squash.html", u=u, cx=cx, modes=connexions.MODES,
+                adresse=saisie.get("adresse", cx["adresse"] if cx else ""),
+                mode=saisie.get("mode", cx["mode"] if cx else "jeton"),
+                identifiant=saisie.get("identifiant", cx["identifiant"] if cx else ""))
+
+
+@app.post("/parametres/squash")
+def parametres_squash(request: Request, adresse: str = Form(""), mode: str = Form("jeton"), identifiant: str = Form(""),
+                      secret: str = Form(""), csrf: str = Form("")):
+    """Teste la connexion avec Squash, puis l'enregistre (secret chiffré) si elle fonctionne."""
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    try:
+        cx = connexions.enregistrer(base, u["id"], adresse, mode, identifiant, secret)
+    except connexions.ErreurConnexion as e:
+        request.session["saisie_squash"] = {"adresse": adresse[:500], "mode": mode, "identifiant": identifiant[:200]}
+        flash(request, f"Connexion non enregistrée. {e}", "erreur")
+        return RedirectResponse("/parametres/squash", status_code=303)
+    base.auditer(u["id"], None, "connexion-squash", f"{connexions.adresse_affichee(cx['url'])} ({cx['mode']})")
+    n = cx["projets_visibles"]
+    flash(request, f"Squash est connecté : {n} projet{'s' if n > 1 else ''} visible{'s' if n > 1 else ''} avec ce compte.", "ok")
+    return RedirectResponse("/parametres/squash", status_code=303)
+
+
+@app.post("/parametres/squash/supprimer")
+def parametres_squash_supprimer(request: Request, csrf: str = Form("")):
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    connexions.supprimer(base, u["id"])
+    base.auditer(u["id"], None, "connexion-squash-supprimee")
+    flash(request, "Connexion à Squash supprimée : le mot de passe ou le jeton a été effacé.", "ok")
+    return RedirectResponse("/parametres/squash", status_code=303)
+
+
+# ---------------------------------------------------------------- tests de l'application (temps B)
+
+def campagne_lisible(code, ident=""):
+    """(dossier, synthèse, modifications) de la campagne demandée ou de la dernière consolidée."""
+    import execution as outil
+    d = projets.dossier(code)
+    for c in ([ident] if ident else outil.campagnes(d)):
+        try:
+            dossier = outil.dossier_campagne(d, c)
+        except outil.ErreurExecution:
+            continue
+        if (dossier / "synthese.json").exists():
+            mods = dossier / "modifications.json"
+            return (dossier, json.loads((dossier / "synthese.json").read_text(encoding="utf-8")),
+                    json.loads(mods.read_text(encoding="utf-8")) if mods.exists() else [])
+    return None, None, []
+
+
+@app.get("/projets/{code}/application", response_class=HTMLResponse)
+def application_page(request: Request, code: str):
+    u = utilisateur(request)
+    exiger_projet(code)
+    saisie = request.session.pop("saisie_application", None) or {}
+    app_ = campagnes.application(code)
+    return page(request, "application.html", u=u, code=code, fiche=projets.fiche(code), app_=app_, actions=campagnes.ACTIONS,
+                url=saisie.get("url", app_["url"]), domaines=saisie.get("domaines", "\n".join(app_["autres_domaines"])),
+                comptes=campagnes.comptes(base, code), max_comptes=campagnes.MAX_COMPTES)
+
+
+@app.post("/projets/{code}/application")
+def application_enregistrer(request: Request, code: str, url: str = Form(""), actions: str = Form("lecture-seule"),
+                            domaines: str = Form(""), csrf: str = Form("")):
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    try:
+        a = campagnes.enregistrer_application(code, url, actions, domaines)
+        base.auditer(u["id"], code, "application-testee", f"{a['url']} ({a['actions']})")
+        flash(request, "Application enregistrée.", "ok")
+    except campagnes.ErreurCampagne as e:
+        request.session["saisie_application"] = {"url": url[:500], "domaines": domaines[:1000]}
+        flash(request, str(e), "erreur")
+    return RedirectResponse(f"/projets/{code}/application", status_code=303)
+
+
+@app.post("/projets/{code}/application/comptes")
+def application_compte(request: Request, code: str, libelle: str = Form(""), identifiant: str = Form(""),
+                       mot_de_passe: str = Form(""), csrf: str = Form("")):
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    try:
+        campagnes.ajouter_compte(base, code, libelle, identifiant, mot_de_passe, u["id"])
+        base.auditer(u["id"], code, "compte-test-ajoute", libelle.strip()[:80])
+        flash(request, "Compte de test ajouté. Son mot de passe est chiffré et ne sera plus affiché.", "ok")
+    except campagnes.ErreurCampagne as e:
+        flash(request, str(e), "erreur")
+    return RedirectResponse(f"/projets/{code}/application#comptes", status_code=303)
+
+
+@app.post("/projets/{code}/application/comptes/{cid}/supprimer")
+def application_compte_supprimer(request: Request, code: str, cid: int, csrf: str = Form("")):
+    controler_csrf(request, csrf)
+    u = utilisateur(request)
+    exiger_projet(code)
+    campagnes.supprimer_compte(base, code, cid)
+    base.auditer(u["id"], code, "compte-test-supprime", str(cid))
+    flash(request, "Compte de test supprimé.", "ok")
+    return RedirectResponse(f"/projets/{code}/application#comptes", status_code=303)
+
+
+@app.post("/projets/{code}/tester")
+async def tester(request: Request, code: str):
+    await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    e = projets.etat(code)
+    if not e["valide"] or e["a_valider"]:
+        raise HTTPException(409, "Les cas doivent être validés (et aucune relecture en cours) avant d'être exécutés.")
+    if not campagnes.application(code)["url"]:
+        raise HTTPException(409, "Indiquez d'abord le lien de l'application à tester.")
+    ok, detail = moteur.disponible()
+    if not ok:
+        raise HTTPException(503, f"L'assistant est indisponible ({detail}). Prévenez l'administrateur.")
+    try:
+        tid = gestionnaire.soumettre(code, "tester", u)
+    except ErreurTache as ex:
+        raise HTTPException(409, str(ex))
+    return {"tache": tid}
+
+
+@app.get("/projets/{code}/tests", response_class=HTMLResponse)
+def tests_page(request: Request, code: str, campagne: str = ""):
+    u = utilisateur(request)
+    exiger_projet(code)
+    dossier, s, mods = campagne_lisible(code, campagne)
+    if not s:
+        raise HTTPException(404, "Aucun résultat de tests pour ce projet.")
+    data = projets.charger_cas(code, "03-valide") or {}
+    import execution as outil
+    return page(request, "tests.html", u=u, code=code, fiche=projets.fiche(code), s=s, st=s["statistiques"],
+                titres={c["id"]: c for c in data.get("cas_de_tests") or []}, statuts=outil.STATUTS, gravites=outil.GRAVITES,
+                etats_exigence=outil.LIBELLES_EXIGENCE, mods=mods, a_decider=bool(mods) and not any(m.get("decision") for m in mods),
+                chemin=f"04-livrables/execution/{dossier.name}", campagnes=outil.campagnes(projets.dossier(code)))
+
+
+@app.get("/projets/{code}/tests/modifications", response_class=HTMLResponse)
+def modifications_page(request: Request, code: str, campagne: str = ""):
+    u = utilisateur(request)
+    exiger_projet(code)
+    dossier, s, mods = campagne_lisible(code, campagne)
+    if not mods:
+        raise HTTPException(404, "Aucune modification de cas proposée.")
+    return page(request, "modifications.html", u=u, code=code, fiche=projets.fiche(code), mods=mods, campagne=dossier.name,
+                chemin=f"04-livrables/execution/{dossier.name}", traitees=any(m.get("decision") for m in mods),
+                occupe=bool(gestionnaire.active(code)))
+
+
+@app.post("/projets/{code}/tests/modifications")
+async def modifications_appliquer(request: Request, code: str):
+    corps = await json_controle(request)
+    u = utilisateur(request)
+    exiger_projet(code)
+    if gestionnaire.active(code):
+        raise HTTPException(409, "Une tâche est en cours sur ce projet : attendez sa fin.")
+    import execution as outil
+    acceptes = [str(i) for i in corps.get("acceptes") or [] if isinstance(i, str)]
+    try:
+        n = outil.appliquer(code, str(corps.get("campagne") or ""), acceptes, u["nom"])
+    except outil.ErreurExecution as ex:
+        raise HTTPException(400, str(ex))
+    if n:
+        projets.script("generer_specs.py", code)
+    base.auditer(u["id"], code, "modifications-cas", f"campagne {corps.get('campagne')} : {n} acceptée(s)")
+    flash(request, (f"{n} cas mis à jour dans la version validée." if n else "Aucune modification retenue : les cas sont inchangés.")
+          + (" Pensez à mettre à jour Squash." if n and projets.etat(code)["publie"] else ""), "ok")
+    return {"ok": True, "redirection": f"/projets/{code}"}
 
 
 # ---------------------------------------------------------------- administration

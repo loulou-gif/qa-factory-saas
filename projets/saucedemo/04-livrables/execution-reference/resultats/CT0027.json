@@ -1,0 +1,24 @@
+{
+  "id": "CT0027",
+  "statut": "echoue",
+  "commentaire": "La commande démarre alors que le panier est vide.",
+  "etapes": [
+    {
+      "numero": 1,
+      "statut": "echoue",
+      "observe": "Le bouton Checkout reste actif avec un panier vide et ouvre le formulaire."
+    }
+  ],
+  "anomalie": {
+    "titre": "Commande possible avec un panier vide",
+    "gravite": "majeure",
+    "attendu": "La commande est impossible tant que le panier est vide.",
+    "obtenu": "Checkout ouvre « Checkout: Your Information » puis la commande se termine sans article.",
+    "description": "Panier vidé, clic sur Checkout : le parcours de commande va jusqu'à « Thank you for your order! »."
+  },
+  "preuves": [
+    "captures/CT0027_02_commande-panier-vide.png"
+  ],
+  "proposition": null,
+  "duree_s": 27
+}

@@ -16,7 +16,9 @@ Un parcours simple, sans formation (règles de conception : skill `interface-qa-
 5. **Questions pour le client** : chaque question se renseigne sur place (« Enregistrer la réponse ») ou se classe « Sans objet (faux positif) ». En relecture, « Mettre à jour les cas avec les réponses » fait reporter les réponses dans les cas par l'assistant.
 6. **Jeux de données** : valeurs, remarques et champs se modifient sur place (pas de mot de passe réel : « variable NOM »).
 
-Puis **Envoyer dans Squash** : on choisit le projet Squash **par son nom** dans la liste (recherche si la liste est longue) et, si on le connaît, le lien de l'application testée (enregistré dans `projet.json`). L'application vérifie ce qui existe, annonce ce qui sera créé, puis envoie après confirmation, avec une barre de progression réelle.
+Puis **Envoyer dans Squash** : on choisit le projet Squash dans un champ de recherche qui liste les projets visibles avec son compte (une partie du nom ou le numéro suffit, au clavier ou à la souris) et, si on le connaît, le lien de l'application testée (enregistré dans `projet.json`). L'application vérifie ce qui existe, annonce ce qui sera créé, puis envoie après confirmation, avec une barre de progression réelle. **Arrêter l'envoi** l'interrompt avant l'élément suivant ; une relance reprend la suite, sans doublon.
+
+Chaque utilisateur connecte son Squash dans **Paramètres › Squash**. Le jeton d'API personnel est proposé par défaut (révocable, avec date d'expiration) ; identifiant et mot de passe restent possibles. Sur le service public, une adresse Squash qui mène à un réseau interne est refusée, y compris si le nom change de réponse entre le contrôle et la connexion (`reseau_public.mjs`). Choix du modèle d'IA par l'utilisateur : voir [docs/SPEC-MODELES.md](../docs/SPEC-MODELES.md) (pas encore disponible).
 - Les cas suspendus à une **question bloquante encore ouverte** ne partent pas ; dès que la question est répondue ou classée sans objet, la page propose « Envoyer N nouveaux cas dans Squash ».
 - Chaque jeu de données devient, sur le cas, un **jeu de données Squash** (nom `JDD-004 Informations de livraison valides`) avec ses **paramètres** et leurs valeurs ; le prérequis du cas cite les paramètres (`Prénom = ${Prenom}`), pour que Squash affiche les valeurs du jeu choisi à l'exécution.
 - Rien n'est jamais modifié ni supprimé dans Squash : un jeu de données qui a déjà une valeur dans Squash n'est pas touché, seuls les jeux encore vides sont complétés ; une relance ne crée aucun doublon.
@@ -44,7 +46,7 @@ python saas/dev/demo.py --modele opencode/deepseek-v4.1-flash-free
 # 3. Sans IA (faux modèle qui rejoue l'analyse de SauceDemo)
 python saas/dev/demo.py --simulation
 ```
-Le navigateur s'ouvre sur `http://127.0.0.1:8000` ; identifiant `demo`, mot de passe `Demo-2026-qa` (à changer à la première connexion). Liste des modèles : `opencode models openrouter`, `opencode models opencode`. Pour essayer l'envoi dans Squash, définir aussi `SQUASH_MCP_DIR`, `SQUASH_TM_BASE_URL`, `SQUASH_TM_USERNAME` et `SQUASH_TM_PASSWORD`, et utiliser un projet Squash d'essai.
+Le navigateur s'ouvre sur `http://127.0.0.1:8000` ; identifiant `demo`, mot de passe `Demo-2026-qa` (à changer à la première connexion). Liste des modèles : `opencode models openrouter`, `opencode models opencode`. Pour essayer l'envoi dans Squash : compiler le MCP à côté du dépôt (`cd ../squash-tm-mcp && npm install && npm run build`, ou définir `SQUASH_MCP_DIR`), puis régler sa connexion dans l'application (**Paramètres › Squash**), sur un projet Squash d'essai.
 
 Choisir le modèle :
 - **Clé OpenRouter** : la voie prévue pour le serveur. Créer une clé dédiée avec un plafond mensuel, activer Zero Data Retention dans les réglages de confidentialité du compte OpenRouter.
@@ -79,8 +81,9 @@ Prérequis : un serveur Linux avec Docker et Docker Compose, environ 4 processeu
    ```bash
    cd /opt/qa/qa-factory-saas/saas
    cp .env.exemple .env && chmod 600 .env
-   nano .env      # QAF_SECRET, QAF_ADMIN_MOT_DE_PASSE, OPENCODE_SERVER_PASSWORD, OPENROUTER_API_KEY, QAF_MODELE, Squash
+   nano .env      # QAF_SECRET, QAF_ADMIN_MOT_DE_PASSE, OPENCODE_SERVER_PASSWORD, OPENROUTER_API_KEY, QAF_MODELE, QAF_CLE_SECRETS
    ```
+   Squash ne se règle pas dans `.env` : chaque utilisateur connecte son propre Squash depuis la page **Squash** de l'application (adresse, identifiant et mot de passe ou jeton d'API ; la connexion est testée avant d'être enregistrée, le secret est chiffré). Clé de chiffrement : `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (sans elle, une clé est créée dans le dossier des données : à sauvegarder avec la base). `QAF_SQUASH_RESEAU_PRIVE=true` seulement si les Squash visés sont sur un réseau interne.
    Pour générer les deux secrets : `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
 3. Construire et démarrer :
    ```bash
@@ -149,5 +152,5 @@ Le test de parcours lance le vrai OpenCode avec le faux modèle (`saas/dev/faux_
 - Temps B non disponible (phase 5) : le navigateur Playwright du moteur est désactivé.
 - Base SQLite : suffisante pour une équipe ; à remplacer par PostgreSQL si l'outil s'ouvre à plusieurs équipes.
 - Comptes locaux uniquement (pas encore de connexion avec les comptes Windows de l'entreprise).
-- Un compte Squash de service pour tout l'outil : dans Squash, les créations apparaissent sous ce compte (l'application garde, elle, le nom de la personne qui a publié).
+- Une connexion Squash par utilisateur : dans Squash, les créations apparaissent sous le compte de la personne qui a envoyé. Un projet déjà envoyé dans une instance Squash ne peut pas être envoyé dans une autre.
 - L'image Docker n'a pas pu être construite dans l'environnement de développement (registre Docker inaccessible) : la première construction se fait sur le serveur ; chaque commande de l'image a été vérifiée séparément.

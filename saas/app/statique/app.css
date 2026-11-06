@@ -263,3 +263,123 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--v
 .champ-squash { display: grid; gap: .35rem; }
 .champ-squash select, .champ-squash input { width: 100%; }
 .formulaire-squash .bouton { justify-self: start; }
+
+/* ---------- connexion à Squash ---------- */
+.boite.boite-large { max-width: 520px; }
+.aide-champ { margin: .35rem 0 0; }
+.choix-mode { border: 0; padding: 0; margin: 1.1rem 0 0; }
+.choix-mode legend { font-weight: 650; padding: 0; margin-bottom: .2rem; }
+.choix-mode label { display: flex; align-items: center; gap: .55rem; font-weight: 500; margin: .4rem 0 0; cursor: pointer; }
+.choix-mode input { accent-color: var(--violet); width: 1.05rem; height: 1.05rem; margin: 0; }
+.supprimer-connexion { margin-top: 1rem; text-align: center; }
+.connecter-squash p { margin-top: 0; }
+.envoi-vers { margin: .2rem 0 .9rem; }
+
+/* Choix du projet Squash : champ de recherche avec liste (combobox) */
+.combo-saisie { position: relative; }
+.combo-saisie input[type=text] { padding-right: 2.6rem; }
+.combo-ouvrir { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); width: 2rem; height: 2rem; display: grid; place-items: center;
+  background: none; border: 0; border-radius: 8px; color: var(--gris); cursor: pointer; }
+.combo-ouvrir:hover:not(:disabled) { color: var(--violet); background: var(--violet-pale); }
+.combo-ouvrir:disabled { opacity: .4; cursor: default; }
+.combo-liste { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + .35rem); margin: 0; padding: .3rem; list-style: none;
+  max-height: 18rem; overflow-y: auto; background: var(--blanc); border: 1px solid var(--trait); border-radius: 12px;
+  box-shadow: 0 18px 40px -18px rgba(38, 35, 56, .35); }
+.combo-liste [role=option] { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .55rem .7rem; border-radius: 8px; cursor: pointer; }
+.combo-liste [role=option]:hover, .combo-liste [role=option].actif { background: var(--violet-pale); }
+.combo-liste [role=option].retenu .nom-projet { font-weight: 700; color: var(--violet-fonce); }
+.combo-liste .nom-projet { overflow-wrap: anywhere; }
+.combo-liste mark { background: var(--ciel-moyen); color: inherit; border-radius: 3px; padding: 0 1px; }
+.combo-liste .numero-projet { flex: none; color: var(--gris); font-size: .82rem; font-variant-numeric: tabular-nums; }
+.combo-liste .combo-vide { padding: .55rem .7rem; color: var(--gris); font-size: .9rem; }
+.combo-etat { margin: 0; min-height: 1.2em; }
+.combo-retenu .combo-etat strong { color: var(--violet-fonce); }
+.arreter-envoi { margin-top: .25rem; }
+.arreter-envoi:hover { color: var(--erreur); }
+.aide-jeton { margin: -.25rem 0 1.1rem; padding: .7rem .9rem; background: var(--ciel-pale); border-radius: 10px; font-size: .92rem; }
+.aide-jeton summary { cursor: pointer; font-weight: 650; color: var(--violet-fonce); }
+.aide-jeton ol { margin: .6rem 0 .4rem; padding-left: 1.3rem; }
+.aide-jeton li { margin: .2rem 0; }
+.aide-jeton p { margin: .3rem 0 0; }
+
+/* ---------- tests de l'application (temps B) ---------- */
+.encadre h2 { font-size: 1.15rem; margin: 0 0 .6rem; }
+.centre { text-align: center; }
+.vide { color: var(--gris); }
+.texte-erreur { color: var(--erreur); }
+.derniers-tests { margin: .4rem 0 .9rem; line-height: 1.9; }
+.derniers-tests .pastille { margin-left: .4rem; }
+.tester .action-principale { margin-bottom: 0; }
+.formulaire-app { display: grid; gap: 1rem; }
+.formulaire-app .bouton { justify-self: start; }
+.choix-actions { border: 0; padding: 0; margin: 0; display: grid; gap: .45rem; }
+.choix-actions legend { font-weight: 700; margin-bottom: .35rem; }
+.choix-ligne { display: flex; gap: .55rem; align-items: baseline; font-weight: 500; cursor: pointer; }
+.avance summary { cursor: pointer; font-weight: 650; color: var(--violet-fonce); }
+.avance textarea { margin-top: .35rem; }
+.liste-comptes { list-style: none; margin: .75rem 0 1rem; padding: 0; display: grid; gap: .5rem; }
+.liste-comptes li { display: flex; align-items: center; gap: .9rem; padding: .65rem .9rem; border: 1px solid var(--trait); border-radius: 10px; }
+.liste-comptes .texte { flex: 1; display: grid; min-width: 0; }
+.liste-comptes .texte span { overflow-wrap: anywhere; }
+.numero-compte { flex: none; font-size: .8rem; font-weight: 700; color: var(--violet); background: var(--violet-pale); border-radius: 999px; padding: .1rem .6rem; }
+.ajout-compte { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; align-items: end; margin-top: .5rem; }
+.ajout-compte .bouton { justify-self: start; }
+
+.large-resultats { max-width: 860px; }
+.chiffres { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }
+.chiffre { background: var(--blanc); border: 1px solid var(--trait); border-radius: 12px; padding: .9rem 1rem; }
+.chiffre b { display: block; font-size: 1.65rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.chiffre span { color: var(--gris); font-size: .88rem; }
+.chiffre.alerte b { color: var(--erreur); }
+.repartition { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--trait); margin: 1rem 0 .4rem; }
+.seg.reussi { background: var(--succes); } .seg.echoue { background: var(--erreur); }
+.seg.bloque { background: var(--alerte); } .seg.non_execute { background: #A9A6B8; }
+.legende { color: var(--gris); font-size: .88rem; margin: 0 0 1.5rem; }
+.a-decider { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-color: var(--ciel); background: var(--ciel-pale); }
+.a-decider p { margin: .2rem 0 0; }
+.anomalie { background: var(--blanc); border: 1px solid var(--trait); border-left: 4px solid var(--erreur); border-radius: 10px; padding: .9rem 1.1rem; margin-bottom: .75rem; }
+.anomalie-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.anomalie .id, .exigences-a-voir .id, .modif .id, .tableau td.id { font-weight: 750; color: var(--violet); font-variant-numeric: tabular-nums; }
+.gravite { font-size: .75rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--erreur); }
+.gravite.mineure { color: var(--alerte); }
+.attendu-obtenu { display: grid; grid-template-columns: auto 1fr; gap: .25rem .75rem; margin: .6rem 0; }
+.attendu-obtenu dt { font-weight: 700; } .attendu-obtenu dd { margin: 0; }
+.preuve img { display: block; max-width: 100%; max-height: 260px; object-fit: cover; object-position: top left; border: 1px solid var(--trait); border-radius: 8px; margin-top: .6rem; }
+.exigences-a-voir { list-style: none; margin: 0 0 1.5rem; padding: 0; display: grid; gap: .4rem; }
+.exigences-a-voir li { display: flex; gap: .7rem; align-items: baseline; }
+.etat { display: inline-block; padding: .05rem .6rem; border-radius: 999px; font-size: .8rem; font-weight: 700; white-space: nowrap; background: var(--fond); color: var(--gris); }
+.etat.reussi, .etat.validee { color: var(--succes); background: var(--succes-pale); }
+.etat.echoue, .etat.echec { color: var(--erreur); background: var(--erreur-pale); }
+.etat.bloque, .etat.partielle { color: var(--alerte); background: var(--alerte-pale); }
+.detail-cas { margin-top: 1.5rem; }
+.detail-cas summary, .campagnes-precedentes a { cursor: pointer; font-weight: 650; color: var(--violet-fonce); }
+.campagnes-precedentes { margin-top: 1.25rem; }
+
+.modif { background: var(--blanc); border: 1px solid var(--trait); border-radius: 12px; padding: 1rem 1.15rem; margin-bottom: .9rem; transition: opacity .2s var(--douce); }
+.modif.ecartee, .modif.refusee { opacity: .55; }
+.modif-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.garder { display: inline-flex; align-items: center; gap: .4rem; font-weight: 700; color: var(--violet-fonce); cursor: pointer; }
+.raison { margin: .5rem 0 .8rem; }
+.champ-modifie { margin-bottom: .7rem; }
+.champ-modifie .libelle { display: block; font-size: .85rem; font-weight: 700; color: var(--gris); margin-bottom: .2rem; }
+.avant-apres { display: grid; gap: .3rem; }
+.avant-apres del, .etapes-diff tr.change td:nth-child(2) { color: var(--gris); text-decoration: line-through; text-decoration-color: rgba(192, 57, 43, .45); }
+.avant-apres ins, .etapes-diff tr.change td:nth-child(3) { text-decoration: none; background: var(--succes-pale); }
+.avant-apres del, .avant-apres ins { display: block; padding: .4rem .6rem; border-radius: 8px; }
+.etapes-diff { width: 100%; border-collapse: collapse; font-size: .92rem; table-layout: fixed; }
+.etapes-diff th { text-align: left; font-size: .82rem; color: var(--gris); padding: .3rem .5rem; }
+.etapes-diff td { padding: .5rem; vertical-align: top; border-top: 1px solid var(--trait); }
+.etapes-diff td.n { color: var(--gris); width: 2rem; }
+.etapes-diff th:first-child { width: 2rem; }
+.etapes-diff .fait, .etapes-diff .voit { display: block; }
+.etapes-diff .voit { margin-top: .25rem; color: var(--gris); }
+.etapes-diff tr.change .voit { color: inherit; }
+@media (max-width: 600px) {
+  .etapes-diff thead { display: none; }
+  .etapes-diff tr { display: grid; grid-template-columns: 1.5rem 1fr; }
+  .etapes-diff td:nth-child(2), .etapes-diff td:nth-child(3) { grid-column: 2; }
+  .etapes-diff td:nth-child(2)::before { content: "Avant"; display: block; font-size: .78rem; color: var(--gris); }
+  .etapes-diff td:nth-child(3)::before { content: "Après"; display: block; font-size: .78rem; color: var(--gris); }
+}
+#modifications { padding-bottom: 5rem; }
+.large-resultats h2 { font-size: 1.2rem; margin: 1.9rem 0 .7rem; }

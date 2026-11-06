@@ -1,0 +1,16 @@
+{
+  "id": "CT0010",
+  "statut": "reussi",
+  "commentaire": "Accès direct à /inventory.html refusé : « You can only access '/inventory.html' when you are logged in. »",
+  "etapes": [
+    {
+      "numero": 1,
+      "statut": "reussi",
+      "observe": "Conforme."
+    }
+  ],
+  "anomalie": null,
+  "preuves": [],
+  "proposition": null,
+  "duree_s": 27
+}

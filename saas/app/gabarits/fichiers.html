@@ -6,15 +6,17 @@
 <div class="etroit">
   <div class="titre-projet"><h1>{{ fiche.nom }}</h1><span class="pastille {{ p.statut[0] }}">{{ p.statut[1] }}</span></div>
 
-  {% if active and active.type in ('analyser', 'corriger') %}
-    <p class="sous-titre">L'assistant prépare vos fichiers.</p>
-    <div class="depot travail" id="depot" data-tache="{{ active.id }}" data-projet="{{ code }}">
+  {% if active and active.type in ('analyser', 'corriger', 'tester') %}
+    {% set teste = active.type == 'tester' %}
+    <p class="sous-titre">{{ "L'assistant exécute les cas sur " ~ app_.url ~ "." if teste else "L'assistant prépare vos fichiers." }}</p>
+    <div class="depot travail" id="depot" data-tache="{{ active.id }}" data-projet="{{ code }}" data-type="{{ active.type }}">
       <div class="remplissage" aria-hidden="true"></div>
       <div class="pourcentage" aria-hidden="true">0 %</div>
       <svg class="coche" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="34"/><path d="M22 37l10 10 19-21"/></svg>
-      <div class="phrase" aria-live="polite">Génération en cours</div>
-      <div class="aide">Vous pouvez quitter cette page : la génération continue.</div>
+      <div class="phrase" aria-live="polite">{{ 'Tests en cours' if teste else 'Génération en cours' }}</div>
+      <div class="aide">Vous pouvez quitter cette page : {{ 'les tests continuent' if teste else 'la génération continue' }}.</div>
     </div>
+    {% if teste %}<p class="centre"><button class="lien-bouton" type="button" data-action="arreter-tache" data-tache="{{ active.id }}">Arrêter les tests</button></p>{% endif %}
 
   {% elif not a %}
     <p class="sous-titre">La génération n'a pas abouti.</p>
@@ -58,26 +60,64 @@
       {% if e.publie %}
       <div class="message ok" style="animation:none">{{ e.publie.cas }} cas et {{ e.publie.exigences }} exigences sont dans Squash{% if squash_nom %} (projet « {{ squash_nom }} »){% elif squash_id %} (projet n° {{ squash_id }}){% endif %}.</div>
       {% endif %}
-      {% if a_envoyer or not e.publie %}
+      {% if (a_envoyer or not e.publie) and not squash_cx %}
+      <div class="encadre connecter-squash">
+        <p>Pour envoyer ces cas dans Squash, connectez d'abord votre Squash : son adresse et le compte à utiliser.</p>
+        <a class="bouton" href="/parametres/squash">Connecter Squash</a>
+      </div>
+      {% elif a_envoyer or not e.publie %}
       <div class="encadre" id="squash" data-projet="{{ code }}" data-squash="{{ squash_id or '' }}">
         <div data-zone="saisie" class="formulaire-squash">
           {% if not e.publie %}
-          <div class="champ-squash">
-            <label for="squash-projet">Projet dans Squash</label>
-            {% if squash_id %}<input type="hidden" id="squash-actuel" value="{{ squash_id }}" data-nom="{{ squash_nom }}">{% endif %}
-            <input type="search" id="squash-filtre" placeholder="Rechercher un projet" hidden aria-label="Rechercher un projet Squash">
-            <select id="squash-projet" disabled><option value="">Chargement des projets Squash…</option></select>
+          <div class="champ-squash combo" id="combo-squash">
+            <label for="squash-recherche">Projet dans Squash</label>
+            <input type="hidden" id="squash-projet" value="{{ squash_id or '' }}">
+            <div class="combo-saisie">
+              <input type="text" id="squash-recherche" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                     aria-controls="squash-liste" aria-describedby="squash-etat" autocomplete="off" spellcheck="false"
+                     placeholder="Chargement des projets Squash…" disabled>
+              <button type="button" class="combo-ouvrir" tabindex="-1" aria-label="Afficher tous les projets Squash" disabled>
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+              </button>
+              <ul id="squash-liste" class="combo-liste" role="listbox" aria-label="Projets Squash" hidden></ul>
+            </div>
+            <p id="squash-etat" class="discret petit combo-etat" aria-live="polite"></p>
           </div>
           {% endif %}
           <div class="champ-squash">
             <label for="squash-url">Lien de l'application testée <span class="discret">(facultatif)</span></label>
             <input type="url" id="squash-url" value="{{ url_application }}" placeholder="https://recette.exemple.com">
           </div>
+          <p class="discret petit envoi-vers">Envoi vers {{ squash_cx.adresse }}{% if squash_cx.mode == 'jeton' %} avec votre jeton d'API{% elif squash_cx.identifiant %} avec le compte {{ squash_cx.identifiant }}{% endif %}. <a href="/parametres/squash">Changer de connexion</a></p>
           <button class="bouton" type="button" data-action="verifier">{% if e.publie %}Envoyer {{ a_envoyer }} nouveau{{ 'x' if a_envoyer > 1 }} cas dans Squash{% else %}Envoyer dans Squash{% endif %}</button>
         </div>
-        <div data-zone="progression" hidden><div class="phrase-squash" aria-live="polite"></div><div class="barre"><div></div></div></div>
+        <div data-zone="progression" hidden><div class="phrase-squash" aria-live="polite"></div><div class="barre"><div></div></div>
+          <button class="lien-bouton arreter-envoi" type="button" data-action="arreter" hidden>Arrêter l'envoi</button></div>
       </div>
       {% endif %}
+    {% endif %}
+
+    {% if va and not av %}
+    <section class="encadre tester" id="tester" data-projet="{{ code }}" aria-labelledby="titre-tester">
+      <h2 id="titre-tester">Tester l'application</h2>
+      {% if not app_.url %}
+      <p>L'assistant exécute les cas validés sur l'application, note chaque résultat et propose les corrections des cas. Indiquez d'abord le lien et les comptes de test.</p>
+      <a class="bouton" href="/projets/{{ code }}/application">Renseigner l'application</a>
+      {% else %}
+      <p class="discret petit">{{ app_.url }} · {{ nb_comptes }} compte{{ 's' if nb_comptes != 1 }} de test · {{ 'lecture seule' if app_.actions == 'lecture-seule' else 'création de données de test autorisée' }}
+        · <a href="/projets/{{ code }}/application">modifier</a></p>
+      {% if derniers %}
+      {% set dc = derniers.statistiques.cas %}
+      <p class="derniers-tests">Derniers tests le {{ derniers.campagne.debut[:16]|replace('T', ' à ') }} :
+        <strong>{{ dc.reussi }} réussi{{ 's' if dc.reussi > 1 }}</strong>{% if dc.echoue %}, <strong class="texte-erreur">{{ dc.echoue }} échoué{{ 's' if dc.echoue > 1 }}</strong>{% endif %}{% if dc.bloque %}, {{ dc.bloque }} bloqué{{ 's' if dc.bloque > 1 }}{% endif %}{% if dc.non_execute %}, {{ dc.non_execute }} non exécuté{{ 's' if dc.non_execute > 1 }}{% endif %}.
+        {% if mods_en_attente %}<span class="pastille alerte">{{ mods_en_attente }} cas à corriger</span>{% endif %}</p>
+      {% endif %}
+      <div class="action-principale">
+        {% if derniers %}<a class="bouton" href="/projets/{{ code }}/tests">Voir les résultats</a>{% endif %}
+        <button class="{{ 'lien-bouton' if derniers else 'bouton' }}" type="button" data-action="tester">{{ 'Relancer les tests' if derniers else 'Lancer les tests' }}</button>
+      </div>
+      {% endif %}
+    </section>
     {% endif %}
 
     <p class="telechargements">Télécharger :
@@ -95,6 +135,17 @@
 </div>
 {% endblock %}
 {% block script %}<script>
-var d = document.getElementById('depot'); if (d) QAF.suivreTache(d, d.getAttribute('data-tache'), function () { location.reload(); });
+var d = document.getElementById('depot');
+if (d) QAF.suivreTache(d, d.getAttribute('data-tache'), function () {
+  if (d.getAttribute('data-type') === 'tester') location.href = '/projets/' + d.getAttribute('data-projet') + '/tests'; else location.reload();
+});
 var s = document.getElementById('squash'); if (s) QAF.squash(s);
+QAF.lancerTests(document.getElementById('tester'));
+document.querySelectorAll('[data-action=arreter-tache]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    b.disabled = true; b.textContent = 'Arrêt en cours…';
+    fetch('/taches/' + b.getAttribute('data-tache') + '/arreter', { method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRF': document.querySelector('meta[name=csrf]').content, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: '{}' });
+  });
+});
 </script>{% endblock %}
